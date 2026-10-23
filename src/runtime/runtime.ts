@@ -9,6 +9,7 @@ import { MARKET, ZONE_D, ZONE_W, ZONES, zoneById } from "@/game/data/layout";
 import { dayNumber, dayPhase, nightFactor, timeOfDay } from "@/game/engine/daycycle";
 import { Game } from "@/game/engine/Game";
 import { HATS } from "@/game/data/hats";
+import { PERKS } from "@/game/data/legacy";
 import { achievementById } from "@/game/engine/achievements";
 import { SEASONS } from "@/game/engine/seasons";
 import { WEATHER_NAMES, rainbowAt, weatherAt } from "@/game/engine/weather";
@@ -160,7 +161,7 @@ export class Runtime {
 
   private grantOffline(seconds: number) {
     if (seconds < 60) return;
-    const res = offlineEarnings(this.game.state.autoIncome.rate, seconds);
+    const res = offlineEarnings(this.game.state.autoIncome.rate, seconds, this.game.perk("holiday"));
     if (res.money < 1) return;
     this.game.earn(res.money, false);
     useUI.setState({ offline: { money: res.money, seconds: res.seconds } });
@@ -342,9 +343,10 @@ export class Runtime {
       ui.clock.weather !== weather ||
       ui.clock.rainbow !== rainbow ||
       ui.hat !== st.hat ||
+      ui.generation !== st.prestige.generations ||
       ui.trophies !== st.achievements.size;
     if (changed || ui.panel) {
-      useUI.setState({ money, hint, goal, stars: st.prestige.stars, statue: st.statue, carry: [carried, cap], clock: { day, phase, season, weather, rainbow }, hat: st.hat, trophies: st.achievements.size, tick: ui.tick + 1 });
+      useUI.setState({ money, hint, goal, stars: st.prestige.stars, statue: st.statue, carry: [carried, cap], clock: { day, phase, season, weather, rainbow }, hat: st.hat, generation: st.prestige.generations, trophies: st.achievements.size, tick: ui.tick + 1 });
     }
   }
 
@@ -491,6 +493,13 @@ export class Runtime {
         else if (e.kind === "fog") pushToast("Утренний туман", WEATHER_NAMES.fog.icon);
         else if (e.from === "rain" && (this.game.state.season === "spring" || this.game.state.season === "summer")) pushToast("После дождя — радуга!", "🌈");
         break;
+      case "perk": {
+        const p = PERKS[e.perk];
+        pushToast(`${p.name}: уровень ${e.level}${p.nextGeneration ? " — со следующего поколения" : ""}`, p.icon);
+        const pl = this.game.state.player;
+        fx.confetti(pl.x, 1.6, pl.z, 30, ["#ffd23f", "#ffcc33", "#fff1a8"]);
+        break;
+      }
       case "achievement": {
         const a = achievementById(e.id);
         if (!a) break;

@@ -36,3 +36,25 @@ export function plural(n: number, forms: [string, string, string]): string {
   if (b === 1) return forms[0];
   return forms[2];
 }
+
+const ROMAN: [number, string][] = [
+  [10, "X"],
+  [9, "IX"],
+  [5, "V"],
+  [4, "IV"],
+  [1, "I"],
+];
+
+/** 1 → "I", 14 → "XIV" (generations of the farming family). */
+export function roman(n: number): string {
+  let out = "";
+  let left = Math.max(1, Math.floor(n));
+  if (left >= 40) return String(left);
+  for (const [v, s] of ROMAN) {
+    while (left >= v) {
+      out += s;
+      left -= v;
+    }
+  }
+  return out;
+}

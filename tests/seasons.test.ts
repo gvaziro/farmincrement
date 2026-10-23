@@ -159,7 +159,7 @@ describe("save v2", () => {
     const v1 = { v: 1, money: 50, seasonEarned: 4321, prestige: { stars: 3, seasons: 2 }, dayClock: clockIn("winter") };
     const st = deserialize(v1);
     expect(st.runEarned).toBe(4321);
-    expect(st.prestige).toEqual({ stars: 3, generations: 2 });
+    expect(st.prestige).toEqual({ stars: 3, totalStars: 3, generations: 2 });
     expect(st.season).toBe("winter");
     const out = serialize(st);
     expect(out.v).toBe(SAVE_VERSION);

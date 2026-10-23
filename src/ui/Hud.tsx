@@ -64,7 +64,7 @@ function TopBar({ runtime }: { runtime: Runtime }) {
       <Carry />
       <DayClock runtime={runtime} />
       {stars > 0 && (
-        <div className="stars" title="Звёзды наследия: +10% к ценам за каждую">
+        <div className="stars" title="Звёзды наследия — их тратят в доме фермера, вкладка «Наследие»">
           ⭐ {stars}
         </div>
       )}

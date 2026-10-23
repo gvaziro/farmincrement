@@ -91,7 +91,7 @@ describe("meta", () => {
   it("a new generation keeps stars and stats, resets the farm", () => {
     const g = unlocked("field_wheat_2", "build_bakery");
     g.state.statue = true;
-    g.state.runEarned = 900_000; // → 3 stars
+    g.state.runEarned = 9_000_000; // → 3 stars
     g.state.stats.earned = 1_234_567;
     expect(g.prestigeStars()).toBe(3);
     expect(g.prestige()).toBe(true);
@@ -101,7 +101,8 @@ describe("meta", () => {
     expect(st.stats.earned).toBe(1_234_567);
     expect(st.machines.map((m) => m.id)).toEqual(["mill"]);
     expect(st.money).toBe(0);
-    expect(g.priceMult()).toBeCloseTo(1.3);
+    // Stars are spent in the legacy shop now; on their own they change nothing.
+    expect(g.priceMult()).toBeCloseTo(1);
     expect(g.pad("field_wheat_2")!.visible).toBe(true);
   });
 

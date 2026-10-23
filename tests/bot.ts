@@ -9,6 +9,7 @@ import { CROPS } from "@/game/data/crops";
 import { MACHINE_TYPES } from "@/game/data/machines";
 import { FARMHOUSE, MARKET } from "@/game/data/layout";
 import { PLAYER_STATS, WORKER_STATS, machineCapacity, type PlayerStatId, type WorkerStatId } from "@/game/data/balance";
+import { PERK_IDS, type PerkId } from "@/game/data/legacy";
 import { Game } from "@/game/engine/Game";
 import { bearsFruit, isRipe } from "@/game/engine/systems/harvest";
 import type { Field, Machine, PadState, PathPoint } from "@/game/engine/types";
@@ -21,6 +22,19 @@ type Task =
   | { kind: "deliver"; zoneId: string; x: number; z: number }
   | { kind: "pickup"; machine: Machine }
   | { kind: "idle"; until: number };
+
+/** How much the bot values a level of each legacy upgrade. */
+const PERK_VALUE: Record<PerkId, number> = {
+  fame: 3,
+  treasury: 2.5,
+  lands: 2.5,
+  workshop: 1.5,
+  soil: 1.5,
+  crew: 1.2,
+  hands: 1,
+  fair: 0.6,
+  holiday: 0.1,
+};
 
 export interface LogEntry {
   t: number;
@@ -44,6 +58,41 @@ export class Bot {
 
   get st() {
     return this.g.state;
+  }
+
+  /**
+   * Hand the farm over to the next generation and spend the stars like a
+   * sensible player: the best usefulness per star first (prices and a head
+   * start matter most; offline income means nothing to a bot). Returns what
+   * it bought.
+   */
+  nextGeneration(): PerkId[] {
+    if (!this.g.prestige()) throw new Error("no statue yet");
+    this.task = null;
+    this.path = [];
+    this.pathIdx = 0;
+    this.goal = null;
+    this.log = [];
+    this.g.drainEvents();
+    const bought: PerkId[] = [];
+    for (;;) {
+      let best: PerkId | null = null;
+      let bestScore = 0;
+      for (const id of PERK_IDS) {
+        const c = this.g.perkCost(id);
+        if (c === null || c > this.st.prestige.stars) continue;
+        const score = PERK_VALUE[id] / c;
+        if (score > bestScore) {
+          bestScore = score;
+          best = id;
+        }
+      }
+      if (!best) break;
+      this.g.buyPerk(best);
+      bought.push(best);
+    }
+    this.g.drainEvents();
+    return bought;
   }
 
   run(seconds: number, dt = 1 / 20, stop?: () => boolean) {

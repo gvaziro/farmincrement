@@ -2,6 +2,7 @@ import { WATER_REACH, fruitSlotWorld, type CropDef, type CropId } from "../../da
 import { NIGHT_FISHING_BOOST, isNight } from "../daycycle";
 import { AUTUMN_BONUS_EVERY, seasonGrowth } from "../seasons";
 import { weatherGrowth } from "../weather";
+import { SOIL_PER_LEVEL } from "../../data/legacy";
 import type { Game } from "../Game";
 import type { Actor, Plant } from "../types";
 
@@ -21,13 +22,16 @@ export function updateFields(game: Game, dt: number) {
   const st = game.state;
   const night = isNight(st.dayClock);
   const raining = st.weather === "rain";
+  // Legacy "fertile soil": plants and orchards grow faster (fish do not care).
+  const soil = 1 + (st.legacy.soil ?? 0) * SOIL_PER_LEVEL;
   for (const f of st.fields) {
     f.spawnT += dt;
     const grow = f.crop.growTime;
     const fruit = bearsFruit(f.crop);
     const maxFruits = f.crop.fruits ?? 0;
     // Fish bite better at night; spring and rain make plants grow faster.
-    const boost = (night && f.crop.kind === "water" ? NIGHT_FISHING_BOOST : 1) * seasonGrowth(st.season, f.crop) * weatherGrowth(raining, f.crop);
+    const boost =
+      (night && f.crop.kind === "water" ? NIGHT_FISHING_BOOST : 1) * seasonGrowth(st.season, f.crop) * weatherGrowth(raining, f.crop) * (f.crop.kind === "water" ? 1 : soil);
     for (const p of f.plants) {
       p.pop += dt;
       if (fruit) {

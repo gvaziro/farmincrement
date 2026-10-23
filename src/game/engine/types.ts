@@ -2,6 +2,7 @@ import type { Rect } from "../core/math";
 import type { PlayerStatId, WorkerStatId } from "../data/balance";
 import type { CropDef } from "../data/crops";
 import type { HatId } from "../data/hats";
+import type { PerkId } from "../data/legacy";
 import type { ItemId } from "../data/items";
 import type { FieldDef, MachineDef, PadDef, PadKind, WorkerDef, ZoneId } from "../data/layout";
 import type { MachineTypeDef } from "../data/machines";
@@ -226,8 +227,13 @@ export interface GameState {
   stats: Stats;
   /** Index into TUTORIAL; >= TUTORIAL.length means finished. */
   tutorial: number;
-  /** Prestige: stars (permanent price bonus) and how many generations have farmed here. */
-  prestige: { stars: number; generations: number };
+  /**
+   * Prestige: stars to spend in the legacy shop, stars earned over all
+   * generations, and how many generations have farmed here.
+   */
+  prestige: { stars: number; totalStars: number; generations: number };
+  /** Levels of the legacy shop's family upgrades. */
+  legacy: Partial<Record<PerkId, number>>;
   /** Money earned by this generation — basis for prestige stars. */
   runEarned: number;
   /** Rolling estimate of automated income per second (for offline). */
@@ -276,6 +282,7 @@ export type GameEvent =
   | { type: "season"; season: SeasonId }
   | { type: "weather"; kind: WeatherKind; from: WeatherKind }
   | { type: "achievement"; id: string }
+  | { type: "perk"; perk: PerkId; level: number }
   /** Autumn: a harvest gave one item extra. */
   | { type: "bonusHarvest"; item: ItemId; x: number; z: number; player: boolean };
 

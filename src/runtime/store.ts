@@ -54,6 +54,8 @@ export interface UIState {
   carry: [number, number];
   /** The farmer's hat. */
   hat: HatId;
+  /** Generations that farmed here before the current one (0 = the founders). */
+  generation: number;
   /** Another tab owns the farm: "other" — at start, "taken" — it took over later. */
   tabBlocked: "other" | "taken" | null;
   /** Show the "what's new" window. */
@@ -118,6 +120,7 @@ export const useUI = create<UIState>(() => ({
   statue: false,
   carry: [0, 10],
   hat: "straw",
+  generation: 0,
   trophies: 0,
   tabBlocked: null,
   news: false,

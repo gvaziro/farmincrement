@@ -2,7 +2,7 @@
 
 import type { Runtime } from "@/runtime/runtime";
 import { updateSettings, useUI } from "@/runtime/store";
-import { NEWS, NEWS_VERSION } from "./news";
+import { NEWS_VERSION, unseenNews } from "./news";
 
 /** The farm is open in another tab: this one waits until the player chooses. */
 export function TabBlockedModal({ runtime }: { runtime: Runtime }) {
@@ -31,8 +31,10 @@ export function WhatsNewModal() {
   const show = useUI((s) => s.news);
   const offline = useUI((s) => s.offline);
   const blocked = useUI((s) => s.tabBlocked);
+  const seen = useUI((s) => s.settings.seenNews);
+  const items = unseenNews(seen);
   // One window at a time: "while you were away" comes first.
-  if (!show || offline || blocked) return null;
+  if (!show || offline || blocked || items.length === 0) return null;
   const close = () => {
     updateSettings({ seenNews: NEWS_VERSION });
     useUI.setState({ news: false });
@@ -43,7 +45,7 @@ export function WhatsNewModal() {
         <div className="modal__emoji">🎉</div>
         <h2>Что нового на ферме</h2>
         <ul className="news">
-          {NEWS.map((n) => (
+          {items.map((n) => (
             <li key={n.text}>
               <span className="news__icon">{n.icon}</span>
               <span>{n.text}</span>

@@ -1487,3 +1487,71 @@ button {
 .news__icon {
   font-size: 20px;
 }
+
+/* ── legacy shop ────────────────────────────────────────────────────── */
+.legacy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(52vh, 460px);
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+.legacy__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.legacy__stars {
+  font-size: 24px;
+  font-weight: 900;
+  color: #c98a00;
+}
+
+.legacy__note {
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: #fff8d6;
+  font-weight: 700;
+  font-size: 14px;
+  color: #6b5a2a;
+}
+
+.card__icon--legacy {
+  background: linear-gradient(#fff8d6, #ffe680);
+}
+
+.perk__later {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #eef0ea;
+  font-size: 11px;
+  font-weight: 800;
+  color: #6b7560;
+  vertical-align: middle;
+}
+
+.pip--star.pip--on {
+  background: #ffc933;
+}
+
+.btn--stars {
+  background: linear-gradient(#ffe066, #f5b800);
+  border-bottom-color: #c98a00;
+  color: #5a3a00;
+  text-shadow: none;
+}
+
+.btn--stars.btn--off,
+.btn--stars:disabled {
+  background: #d9dcd4;
+  border-bottom-color: #b9bcb3;
+  color: #8a9080;
+}

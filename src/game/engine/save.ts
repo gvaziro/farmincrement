@@ -4,6 +4,7 @@
  */
 import { MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, OFFLINE_CAP_SECONDS, OFFLINE_EFFICIENCY, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, statMaxLevel } from "../data/balance";
 import { isHatId } from "../data/hats";
+import { HOLIDAY_EFFICIENCY_PER_LEVEL, HOLIDAY_HOURS_PER_LEVEL, PERKS, isPerkId } from "../data/legacy";
 import { ITEM_IDS, type ItemId } from "../data/items";
 import { ACHIEVEMENTS, unlockedHats } from "./achievements";
 import { FIELDS, MACHINES, ZONES, type ZoneId } from "../data/layout";
@@ -33,8 +34,9 @@ export interface SaveData {
   statue: boolean;
   stats: Stats;
   tutorial: number;
-  prestige: { stars: number; generations: number };
+  prestige: { stars: number; generations: number; totalStars?: number };
   runEarned: number;
+  legacy?: Partial<Record<string, number>>;
   autoRate: number;
   order?: { id: number; lines: { item: ItemId; need: number; have: number }[]; reward: number; fair?: boolean } | null;
   lastFair?: number;
@@ -72,6 +74,7 @@ export function serialize(st: GameState, now = Date.now()): SaveData {
     stats: { ...st.stats },
     tutorial: st.tutorial,
     prestige: { ...st.prestige },
+    legacy: { ...st.legacy },
     runEarned: round2(st.runEarned),
     autoRate: st.autoIncome.rate,
     order: st.order ? { id: st.order.id, lines: st.order.lines.map((l) => ({ ...l })), reward: st.order.reward, fair: st.order.fair || undefined } : null,
@@ -124,7 +127,13 @@ export function deserialize(raw: unknown): GameState {
   st.dayClock = num(d.dayClock, 0, 0);
   st.season = seasonOf(st.dayClock);
   st.weather = currentWeather(st.dayClock);
-  st.prestige = { stars: num(d.prestige?.stars, 0, 0), generations: num(d.prestige?.generations, 0, 0) };
+  const stars = Math.floor(num(d.prestige?.stars, 0, 0));
+  // Saves from before the legacy shop: the stars they had become shop money.
+  st.prestige = { stars, totalStars: Math.floor(num(d.prestige?.totalStars, stars, stars)), generations: num(d.prestige?.generations, 0, 0) };
+  st.legacy = {};
+  for (const [id, level] of Object.entries(d.legacy ?? {})) {
+    if (isPerkId(id)) st.legacy[id] = Math.floor(num(level, 0, 0, PERKS[id].max));
+  }
   if (d.stats) for (const k of Object.keys(st.stats) as (keyof Stats)[]) st.stats[k] = num(d.stats[k], 0, 0);
 
   for (const id of Object.keys(st.playerLevels) as (keyof typeof st.playerLevels)[]) {
@@ -213,10 +222,11 @@ function migrate(raw: unknown): SaveData | null {
   return d as unknown as SaveData;
 }
 
-/** Money earned while the tab was closed. */
-export function offlineEarnings(rate: number, seconds: number) {
-  const s = Math.max(0, Math.min(seconds, OFFLINE_CAP_SECONDS));
-  return { seconds: s, money: Math.floor(rate * s * OFFLINE_EFFICIENCY) };
+/** Money earned while the tab was closed ("long holiday" raises the cap and the share). */
+export function offlineEarnings(rate: number, seconds: number, holiday = 0) {
+  const cap = OFFLINE_CAP_SECONDS + holiday * HOLIDAY_HOURS_PER_LEVEL * 3600;
+  const s = Math.max(0, Math.min(seconds, cap));
+  return { seconds: s, money: Math.floor(rate * s * (OFFLINE_EFFICIENCY + holiday * HOLIDAY_EFFICIENCY_PER_LEVEL)) };
 }
 
 function readOrder(v: unknown): Order | null {

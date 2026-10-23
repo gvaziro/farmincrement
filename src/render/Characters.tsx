@@ -32,6 +32,9 @@ const LOOKS: Record<string, Look> = {
   operator: { shirt: "#3fa7ff", pants: "#3a4a6a", hat: "hard", hatColor: "#ffd23f", skin: "#e8b48a", scarf: "#d9485f" },
 };
 
+/** Each generation of the family wears its own colour. */
+const FAMILY_SHIRTS = ["#e0533d", "#3fa7a0", "#8e6cc9", "#f29e1c", "#4a90d9", "#d9485f", "#5fae45"];
+
 const scarfMat = new MeshLambertMaterial({ vertexColors: true, flatShading: true });
 const scarfGeos = new Map<string, ReturnType<typeof merge>>();
 /** A knitted scarf round the neck with one end hanging down (one mesh). */
@@ -130,15 +133,19 @@ const FANCY_HATS = {
 export function Characters({ runtime }: { runtime: Runtime }) {
   const structure = useUI((s) => s.structure);
   const hat = useUI((s) => s.hat);
+  const generation = useUI((s) => s.generation);
   const workers = useMemo(() => {
     void structure;
     return [...runtime.game.state.workers];
   }, [runtime, structure]);
-  const player = useMemo<Look>(() => ({ ...LOOKS.player, hat, hatColor: HATS[hat].color }), [hat]);
+  const player = useMemo<Look>(
+    () => ({ ...LOOKS.player, shirt: FAMILY_SHIRTS[generation % FAMILY_SHIRTS.length], hat, hatColor: HATS[hat].color }),
+    [hat, generation],
+  );
   return (
     <group>
-      {/* Keyed by hat: the baked character mesh is rebuilt when the hat changes. */}
-      <Character key={`player-${hat}`} get={() => runtime.game.state.player} look={player} dust />
+      {/* Keyed by look: the baked character mesh is rebuilt when it changes. */}
+      <Character key={`player-${hat}-${generation}`} get={() => runtime.game.state.player} look={player} dust />
       {workers.map((w) => (
         <Character key={w.id} get={() => runtime.game.actor(w.id)} look={LOOKS[w.def.job.kind]} />
       ))}

@@ -8,6 +8,7 @@
  * ends; an unfinished fair then leaves the board.
  */
 import { FAIR_BONUS, ORDER_BONUS, ORDER_COOLDOWN } from "../../data/balance";
+import { FAIR_PER_LEVEL } from "../../data/legacy";
 import { ITEMS, isSellable, type ItemId } from "../../data/items";
 import type { Game } from "../Game";
 import { DAYS_PER_SEASON, SEASONS, seasonDay, seasonSerial } from "../seasons";
@@ -78,9 +79,12 @@ export function makeFairOrder(game: Game): Order | null {
     reward: 0,
     fair: true,
   };
-  order.reward = Math.round(order.lines.reduce((s, l) => s + l.need * game.sellValue(l.item), 0) * FAIR_BONUS);
+  order.reward = Math.round(order.lines.reduce((s, l) => s + l.need * game.sellValue(l.item), 0) * FAIR_BONUS * rewardMult(game));
   return order;
 }
+
+/** Legacy "fair savvy": bigger bonuses for orders and fairs. */
+const rewardMult = (game: Game) => 1 + game.perk("fair") * FAIR_PER_LEVEL;
 
 export function makeOrder(game: Game): Order | null {
   const st = game.state;
@@ -108,7 +112,7 @@ export function makeOrder(game: Game): Order | null {
     })),
     reward: 0,
   };
-  order.reward = Math.round(order.lines.reduce((s, l) => s + l.need * game.sellValue(l.item), 0) * ORDER_BONUS);
+  order.reward = Math.round(order.lines.reduce((s, l) => s + l.need * game.sellValue(l.item), 0) * ORDER_BONUS * rewardMult(game));
   return order;
 }
 

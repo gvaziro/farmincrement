@@ -129,6 +129,6 @@ export const FAIR_BONUS = 2.0;
 // ── meta ────────────────────────────────────────────────────────────────
 export const OFFLINE_EFFICIENCY = 0.6;
 export const OFFLINE_CAP_SECONDS = 2 * 60 * 60;
-export const PRESTIGE_DIVISOR = 100_000;
-export const PRESTIGE_BONUS_PER_STAR = 0.1;
+/** Stars for handing the farm over: a full first run (~$1.5B) gives ~38. */
+export const PRESTIGE_DIVISOR = 1_000_000;
 export const starsForEarnings = (earned: number) => Math.floor(Math.sqrt(earned / PRESTIGE_DIVISOR));

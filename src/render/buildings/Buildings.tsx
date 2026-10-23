@@ -3,6 +3,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import type { Group } from "three";
+import { roman } from "@/game/core/format";
 import { easeOutBack } from "@/game/core/math";
 import { ITEMS } from "@/game/data/items";
 import { DEPOT, FARMHOUSE, MARKET, STATUE, TRASH } from "@/game/data/layout";
@@ -35,6 +36,7 @@ export function Buildings({ runtime }: { runtime: Runtime }) {
       ))}
       <Market runtime={runtime} />
       <Farmhouse />
+      <FamilySign />
       <TrashBin />
       {st.depot && <Depot runtime={runtime} />}
       {st.statue && <Statue />}
@@ -172,6 +174,17 @@ function TrashBin() {
         <Decal w={TRASH.w} d={TRASH.d} spec={{ icon: "🗑️", text: "ВЫБРОСИТЬ", bg: "rgba(120,90,60,0.35)", color: "#f0e0c8" }} y={0.06} />
       </group>
     </StaticBatch>
+  );
+}
+
+/** Above the farmhouse door: which generation of the family farms here. */
+function FamilySign() {
+  const generation = useUI((s) => s.generation);
+  if (generation < 1) return null;
+  return (
+    <group position={[FARMHOUSE.x, 1.94, FARMHOUSE.z + 1.56]}>
+      <Sign text={`ПОКОЛЕНИЕ ${roman(generation + 1)}`} w={1.25} h={0.3} color="#6b4a2a" textColor="#ffe9a8" />
+    </group>
   );
 }
 

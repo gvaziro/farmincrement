@@ -2,10 +2,11 @@
  * The simulation. Pure TypeScript: no React, no three.js. Renderers read
  * `game.state` every frame; the UI listens to drained events.
  */
-import { PRESTIGE_BONUS_PER_STAR, MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, machineUpgradeCost, marketPriceMult, marketUpgradeCost, starsForEarnings, statCost, truckUpgradeCost, type PlayerStatId, type WorkerStatId } from "../data/balance";
+import { MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, machineUpgradeCost, marketPriceMult, marketUpgradeCost, starsForEarnings, statCost, statMaxLevel, truckUpgradeCost, type PlayerStatId, type WorkerStatId } from "../data/balance";
 import { ITEMS, type ItemId } from "../data/items";
 import { fieldById, machineById, machineUpgradeBase, zoneById, type PadDef } from "../data/layout";
 import { isHatId, type HatId } from "../data/hats";
+import { FAME_PER_LEVEL, LANDS_ORDER, PERKS, TREASURY_MONEY, WORKSHOP_PER_LEVEL, type PerkId } from "../data/legacy";
 import { unlockedHats, updateAchievements } from "./achievements";
 import { inputSlot, localToWorld, outputSlot, stackSlotLocal } from "./anchors";
 import { isNight } from "./daycycle";
@@ -278,7 +279,7 @@ export class Game {
 
   // ── economy ───────────────────────────────────────────────────────────
   priceMult() {
-    return marketPriceMult(this.state.marketLevel) * (1 + this.state.prestige.stars * PRESTIGE_BONUS_PER_STAR);
+    return marketPriceMult(this.state.marketLevel) * (1 + this.perk("fame") * FAME_PER_LEVEL);
   }
   sellValue(item: ItemId) {
     return ITEMS[item].price * this.priceMult() * seasonDemand(this.state.season, item);
@@ -299,7 +300,8 @@ export class Game {
         const m = this.machineMap.get(e.id);
         const level = m?.level ?? 1;
         if (level >= MACHINE_MAX_LEVEL) return null;
-        return machineUpgradeCost(machineUpgradeBase(machineById(e.id)), level);
+        // Legacy "father's tools": machine upgrades are cheaper.
+        return Math.round(machineUpgradeCost(machineUpgradeBase(machineById(e.id)), level) * (1 - this.perk("workshop") * WORKSHOP_PER_LEVEL));
       }
       case "upgradeMarket":
         return this.state.marketLevel >= MARKET_MAX_LEVEL ? null : marketUpgradeCost(this.state.marketLevel);
@@ -434,19 +436,46 @@ export class Game {
     return true;
   }
 
+  // ── legacy ────────────────────────────────────────────────────────────
+  /** Level of a legacy upgrade. */
+  perk(id: PerkId) {
+    return this.state.legacy[id] ?? 0;
+  }
+  /** Star price of the next level, or null if maxed. */
+  perkCost(id: PerkId) {
+    const level = this.perk(id);
+    return level >= PERKS[id].max ? null : PERKS[id].cost(level + 1);
+  }
+  buyPerk(id: PerkId) {
+    const st = this.state;
+    const cost = this.perkCost(id);
+    if (cost === null || st.prestige.stars < cost) return false;
+    st.prestige.stars -= cost;
+    st.legacy[id] = this.perk(id) + 1;
+    this.emit({ type: "perk", perk: id, level: st.legacy[id]! });
+    return true;
+  }
+
   // ── prestige ──────────────────────────────────────────────────────────
   prestigeStars() {
     return starsForEarnings(this.state.runEarned);
   }
   /**
-   * A new generation takes over: the farm starts from scratch, but the stars
-   * (a permanent price bonus) and the statistics are inherited.
+   * A new generation takes over: the farm starts from scratch, but stars,
+   * legacy upgrades, statistics, trophies and the hat are inherited — and the
+   * "next generation" upgrades give it a head start.
    */
   prestige() {
     const old = this.state;
     if (!old.statue) return false;
     const next = createInitialState();
-    next.prestige = { stars: old.prestige.stars + this.prestigeStars(), generations: old.prestige.generations + 1 };
+    const earned = this.prestigeStars();
+    next.prestige = {
+      stars: old.prestige.stars + earned,
+      totalStars: old.prestige.totalStars + earned,
+      generations: old.prestige.generations + 1,
+    };
+    next.legacy = { ...old.legacy };
     next.stats = { ...old.stats };
     next.made = { ...old.made };
     // Trophies and the hat are the family's.
@@ -458,10 +487,29 @@ export class Game {
     // The new generation starts on a fresh spring morning.
     next.dayClock = 0;
     this.state = next;
+    this.inherit(next);
     this.events = [];
     this.rebuild();
-    this.emit({ type: "toast", text: "Новое поколение фермеров!", icon: "⭐" });
+    this.emit({ type: "toast", text: `Ферма переходит к детям: ${earned} ⭐ — потрать их в доме фермера`, icon: "👨‍👩‍👧" });
     return true;
+  }
+
+  /** Head start of a new generation from the "next generation" upgrades. */
+  private inherit(st: GameState) {
+    const lv = (id: PerkId) => st.legacy[id] ?? 0;
+    st.money = TREASURY_MONEY[Math.min(lv("treasury"), TREASURY_MONEY.length - 1)];
+    st.playerLevels.capacity = Math.min(statMaxLevel(PLAYER_STATS.capacity), 1 + lv("hands"));
+    st.playerLevels.speed = Math.min(statMaxLevel(PLAYER_STATS.speed), 1 + lv("hands"));
+    st.workerLevels.speed = Math.min(statMaxLevel(WORKER_STATS.speed), 1 + lv("crew"));
+    st.workerLevels.capacity = Math.min(statMaxLevel(WORKER_STATS.capacity), 1 + lv("crew"));
+    for (const id of LANDS_ORDER.slice(0, lv("lands"))) {
+      st.zones.add(id);
+      for (const fid of zoneById(id).includes) if (!st.fields.some((f) => f.id === fid)) st.fields.push(createField(fieldById(fid), false));
+      if (id === "depot" && !st.depot) st.depot = createDepot();
+      const pad = st.pads.find((p) => p.id === `zone_${id}`);
+      if (pad) pad.done = true;
+    }
+    applyStats(st);
   }
 
   // ── wardrobe ──────────────────────────────────────────────────────────

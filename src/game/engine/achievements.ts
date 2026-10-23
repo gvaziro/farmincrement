@@ -7,6 +7,7 @@ import type { ItemId } from "../data/items";
 import { ZONES } from "../data/layout";
 import type { HatId } from "../data/hats";
 import { MACHINE_MAX_LEVEL } from "../data/balance";
+import { PERKS, PERK_IDS } from "../data/legacy";
 import type { Game } from "./Game";
 
 export interface AchievementDef {
@@ -56,7 +57,9 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: "statue", name: "Золотая статуя", desc: "Построй Золотую статую", icon: "🏆", goal: 1, value: (g) => (g.state.statue ? 1 : 0), hat: "crown" },
   { id: "earned_1b", name: "Миллиардер", desc: "Заработай $1B", icon: "💎", goal: 1_000_000_000, value: (g) => g.state.stats.earned, unit: "money", hat: "tophat" },
   { id: "generation", name: "Новое поколение", desc: "Передай ферму наследникам", icon: "👨‍👩‍👧", goal: 1, value: (g) => g.state.prestige.generations },
-  { id: "stars_10", name: "Звёздная семья", desc: "Накопи 10 звёзд наследия", icon: "🌟", goal: 10, value: (g) => g.state.prestige.stars },
+  { id: "stars_10", name: "Звёздная семья", desc: "Заработай 10 звёзд наследия", icon: "🌟", goal: 10, value: (g) => g.state.prestige.totalStars },
+  { id: "perk_first", name: "Семейное дело", desc: "Купи улучшение в лавке наследия", icon: "🏛️", goal: 1, value: (g) => Object.values(g.state.legacy).reduce((s, l) => s + (l ?? 0), 0) },
+  { id: "perk_max", name: "Родовое гнездо", desc: "Прокачай улучшение наследия до предела", icon: "🏰", goal: 1, value: (g) => (PERK_IDS.some((id) => (g.state.legacy[id] ?? 0) >= PERKS[id].max) ? 1 : 0) },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);
