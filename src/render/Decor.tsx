@@ -2,15 +2,20 @@
 
 import { useFrame } from "@react-three/fiber";
 import { useLayoutEffect, useMemo, useRef } from "react";
-import { Color, InstancedMesh, MeshLambertMaterial, Object3D, type BufferGeometry, type Group } from "three";
+import { Color, InstancedMesh, MeshLambertMaterial, Object3D, type BufferGeometry, type Group, type Material } from "three";
 import { mulberry32 } from "@/game/core/math";
 import { MAP_BOUNDS, POND, ZONE_D, ZONE_W, ZONES } from "@/game/data/layout";
 import type { Runtime } from "@/runtime/runtime";
 import { merge, P, part } from "./geom";
 import { cropGeometry } from "./models/cropModels";
 import { isReserved } from "./reserved";
+import { makeSeasonal, seasonVisual, type SeasonKind } from "./seasonLook";
 
-const vmat = new MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const vmat = (kind: SeasonKind) => makeSeasonal(new MeshLambertMaterial({ vertexColors: true, flatShading: true }), kind);
+/** Leafy things change with the seasons; pines stay green; rocks only get snow. */
+const FOLIAGE = vmat("foliage");
+const EVERGREEN = vmat("evergreen");
+const SNOWY = vmat("snow");
 
 interface Inst {
   x: number;
@@ -23,7 +28,7 @@ interface Inst {
 const dummy = new Object3D();
 const tmpColor = new Color();
 
-function Instanced({ geometry, items, shadow = true }: { geometry: BufferGeometry; items: Inst[]; shadow?: boolean }) {
+function Instanced({ geometry, items, shadow = true, material = FOLIAGE }: { geometry: BufferGeometry; items: Inst[]; shadow?: boolean; material?: Material }) {
   const ref = useRef<InstancedMesh>(null);
   useLayoutEffect(() => {
     const m = ref.current!;
@@ -40,7 +45,7 @@ function Instanced({ geometry, items, shadow = true }: { geometry: BufferGeometr
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
     m.computeBoundingSphere();
   }, [items]);
-  return <instancedMesh ref={ref} args={[geometry, vmat, Math.max(1, items.length)]} castShadow={shadow} receiveShadow />;
+  return <instancedMesh ref={ref} args={[geometry, material, Math.max(1, items.length)]} castShadow={shadow} receiveShadow />;
 }
 
 // ── geometries ──────────────────────────────────────────────────────────
@@ -110,9 +115,11 @@ function scatter() {
 
   // Forest ring around the map.
   const pad = 1.6;
-  for (let i = 0; i < 520; i++) {
-    const x = -78 + rnd() * 156;
-    const z = -70 + rnd() * 128;
+  const ring = { x0: MAP_BOUNDS.minX - 39, x1: MAP_BOUNDS.maxX + 39, z0: MAP_BOUNDS.minZ - 37, z1: MAP_BOUNDS.maxZ + 25 };
+  const count = Math.round((520 * ((ring.x1 - ring.x0) * (ring.z1 - ring.z0))) / (156 * 128));
+  for (let i = 0; i < count; i++) {
+    const x = ring.x0 + rnd() * (ring.x1 - ring.x0);
+    const z = ring.z0 + rnd() * (ring.z1 - ring.z0);
     const inside = x > MAP_BOUNDS.minX - pad && x < MAP_BOUNDS.maxX + pad && z > MAP_BOUNDS.minZ - pad && z < MAP_BOUNDS.maxZ + pad;
     if (inside) continue;
     // Thin out in front of the camera so the south edge stays readable.
@@ -135,15 +142,19 @@ function scatter() {
     lilies.push({ x, z, s: 0.7 + rnd() * 0.6, yaw: rnd() * 6.28 });
   }
 
-  // The apiary is a clearing: a fringe of trees stays along the map edge.
+  // Forest plots are clearings: a fringe of trees stays along the map edge.
+  const hasZone = (gx: number, gz: number) => ZONES.some((z) => z.gx === gx && z.gz === gz);
   for (const z of ZONES) {
     if (z.wild !== "forest") continue;
     const cx = z.gx * ZONE_W;
     const cz = z.gz * ZONE_D;
+    const west = !hasZone(z.gx - 1, z.gz);
+    const north = !hasZone(z.gx, z.gz - 1);
+    if (!west && !north) continue;
     for (let i = 0; i < 46; i++) {
-      const alongX = rnd() < 0.5;
-      const x = alongX ? cx + (rnd() - 0.5) * (ZONE_W - 2) : MAP_BOUNDS.minX + 1 + rnd() * 2.2;
-      const zz = alongX ? MAP_BOUNDS.minZ + 1 + rnd() * 2.2 : cz + (rnd() - 0.5) * (ZONE_D - 2);
+      const alongX = north && (!west || rnd() < 0.5);
+      const x = alongX ? cx + (rnd() - 0.5) * (ZONE_W - 2) : cx - ZONE_W / 2 + 1 + rnd() * 2.2;
+      const zz = alongX ? cz - ZONE_D / 2 + 1 + rnd() * 2.2 : cz + (rnd() - 0.5) * (ZONE_D - 2);
       if (isReserved(x, zz, 1)) continue;
       tree(x, zz, 0.95);
     }
@@ -220,18 +231,34 @@ export function Decor({ runtime }: { runtime: Runtime }) {
     "#ffb347": useGeo("flower", "#ffb347"),
   } as Record<string, BufferGeometry>;
 
+  const flowers = useRef<Group>(null);
+  const lilies = useRef<Group>(null);
+  useFrame(() => {
+    // Flowers sink into the snow; lily pads vanish under the ice.
+    const w = seasonVisual.winter;
+    if (flowers.current) {
+      flowers.current.scale.y = Math.max(0.001, 1 - w);
+      flowers.current.visible = w < 0.99;
+    }
+    if (lilies.current) lilies.current.visible = w < 0.3;
+  });
+
   return (
     <group>
-      <Instanced geometry={pine} items={d.pines} />
+      <Instanced geometry={pine} items={d.pines} material={EVERGREEN} />
       <Instanced geometry={round} items={d.rounds} />
       <Instanced geometry={bush} items={d.bushes} />
-      <Instanced geometry={rock} items={d.rocks} />
+      <Instanced geometry={rock} items={d.rocks} material={SNOWY} />
       <Instanced geometry={tuft} items={d.tufts} shadow={false} />
-      {Object.entries(d.flowers).map(([c, list]) => (
-        <Instanced key={c} geometry={flowerGeos[c]} items={list} shadow={false} />
-      ))}
+      <group ref={flowers}>
+        {Object.entries(d.flowers).map(([c, list]) => (
+          <Instanced key={c} geometry={flowerGeos[c]} items={list} shadow={false} />
+        ))}
+      </group>
       <Instanced geometry={reed} items={d.pondReeds} />
-      <Instanced geometry={lily} items={d.lilies} shadow={false} />
+      <group ref={lilies}>
+        <Instanced geometry={lily} items={d.lilies} shadow={false} />
+      </group>
       {ZONES.filter((z) => z.id !== "farm").map((z) => (
         <Wild key={z.id} runtime={runtime} zone={z} bush={bush} tuft={tuft} pine={pine} round={round} />
       ))}
@@ -269,7 +296,7 @@ function Wild({
     <group ref={group}>
       <Instanced geometry={bush} items={w.bushes} />
       <Instanced geometry={tuft} items={w.tufts} shadow={false} />
-      {w.pines.length > 0 && <Instanced geometry={pine} items={w.pines} />}
+      {w.pines.length > 0 && <Instanced geometry={pine} items={w.pines} material={EVERGREEN} />}
       {w.rounds.length > 0 && <Instanced geometry={round} items={w.rounds} />}
     </group>
   );

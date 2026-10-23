@@ -118,6 +118,50 @@ function flowers(main: string, accent: string) {
   return merge(parts);
 }
 
+/** Low clump of strawberry leaves with a couple of white flowers. */
+function strawberryBush() {
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    parts.push(part(P.sphere(0.13, 5, 3), i % 2 ? "#3f9b2f" : "#4fae3a", { p: [Math.cos(a) * 0.17, 0.11, Math.sin(a) * 0.17], s: [1.2, 0.45, 1.2] }));
+  }
+  parts.push(part(P.sphere(0.15, 5, 3), "#5fbe45", { p: [0, 0.17, 0], s: [1.2, 0.5, 1.2] }));
+  parts.push(part(P.sphere(0.035, 5, 3), "#ffffff", { p: [0.1, 0.25, 0.12] }));
+  parts.push(part(P.sphere(0.035, 5, 3), "#ffffff", { p: [-0.14, 0.23, -0.05] }));
+  return merge(parts);
+}
+
+/** Ripe red berries peeking out of the clump. */
+function strawberryFruits() {
+  const at: [number, number, number][] = [
+    [0.25, 0.09, 0.1],
+    [-0.21, 0.09, 0.17],
+    [0.06, 0.09, -0.26],
+    [-0.15, 0.1, -0.19],
+  ];
+  return merge(
+    at.flatMap(([x, y, z]) => [
+      part(P.sphere(0.078, 6, 5), "#e8323c", { p: [x, y, z], s: [1, 1.2, 1] }),
+      part(P.cone(0.045, 0.035, 5), "#3f9b2f", { p: [x, y + 0.08, z] }),
+    ]),
+  );
+}
+
+/** A big ribbed pumpkin with a stem, lying among its leaves. */
+function pumpkin() {
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    parts.push(part(P.sphere(0.24, 8, 6), i % 2 ? "#f28c28" : "#e07a1c", { p: [Math.cos(a) * 0.12, 0.24, Math.sin(a) * 0.12], s: [0.75, 0.85, 0.75] }));
+  }
+  parts.push(part(P.sphere(0.27, 8, 6), "#f59a35", { p: [0, 0.25, 0], s: [1, 0.82, 1] }));
+  parts.push(part(P.cyl(0.035, 0.05, 0.16, 5), "#5a7a2a", { p: [0.02, 0.5, 0], r: [0.25, 0, 0.2] }));
+  parts.push(part(P.cone(0.2, 0.05, 5), "#4fae3a", { p: [0.36, 0.03, 0.12] }));
+  parts.push(part(P.cone(0.17, 0.05, 5), "#3f9b2f", { p: [-0.34, 0.03, -0.16] }));
+  parts.push(part(P.cyl(0.018, 0.018, 0.4, 4), "#5fae45", { p: [0.22, 0.05, -0.28], r: [Math.PI / 2, 0, 0.7] }));
+  return merge(parts);
+}
+
 /** Water ripple ring around a fishing spot. */
 function ripple() {
   return merge([part(new TorusGeometry(0.42, 0.035, 4, 18), "#e9f8ff", { r: [Math.PI / 2, 0, 0] })]);
@@ -128,6 +172,9 @@ const builders = {
   flowersYellow: () => flowers("#ffd23f", "#ff9f1c"),
   flowersPurple: () => flowers("#b98cff", "#ff6b8a"),
   ripple,
+  strawberryBush,
+  strawberryFruits,
+  pumpkin,
   wheat,
   corn,
   grass,

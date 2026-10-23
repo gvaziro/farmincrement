@@ -2,16 +2,29 @@
  * Market orders: a short-term goal on the board above the market, e.g.
  * "20 bread + 10 cheese". Goods the player sells at the market count towards
  * it; finishing pays a bonus on top of the normal price.
+ *
+ * On the last day of every season there is a fair: one order made of the
+ * season's goods in demand, with a double bonus. It lasts until the season
+ * ends; an unfinished fair then leaves the board.
  */
-import { ORDER_BONUS, ORDER_COOLDOWN } from "../../data/balance";
+import { FAIR_BONUS, ORDER_BONUS, ORDER_COOLDOWN } from "../../data/balance";
 import { ITEMS, isSellable, type ItemId } from "../../data/items";
 import type { Game } from "../Game";
+import { DAYS_PER_SEASON, SEASONS, seasonDay, seasonSerial } from "../seasons";
 import { TUTORIAL_DONE } from "../tutorial";
 import type { Order } from "../types";
 
 export function updateOrders(game: Game, dt: number) {
   const st = game.state;
-  if (st.tutorial < TUTORIAL_DONE || st.order) return;
+  if (st.tutorial < TUTORIAL_DONE) return;
+  // The fair's season is over: its goods are out of season now.
+  if (st.order?.fair && st.lastFair !== seasonSerial(st.dayClock)) {
+    st.order = null;
+    st.orderCooldown = 3;
+    game.emit({ type: "order", state: "expired" });
+  }
+  if (startFair(game)) return;
+  if (st.order) return;
   st.orderCooldown -= dt;
   if (st.orderCooldown > 0) return;
   const order = makeOrder(game);
@@ -31,6 +44,42 @@ function availableProducts(game: Game): ItemId[] {
     if (isSellable(out)) set.add(out);
   }
   return [...set].sort((a, b) => ITEMS[b].price - ITEMS[a].price);
+}
+
+/**
+ * On the last day of a season, the fair takes over the board — unless the
+ * player is already working on an order: then it waits for that order to be
+ * finished (as long as the last day lasts).
+ */
+function startFair(game: Game) {
+  const st = game.state;
+  const serial = seasonSerial(st.dayClock);
+  if (st.lastFair === serial || seasonDay(st.dayClock) !== DAYS_PER_SEASON) return false;
+  if (st.order && (st.order.fair || st.order.lines.some((l) => l.have > 0))) return false;
+  const fair = makeFairOrder(game);
+  if (!fair) return false;
+  st.order = fair;
+  st.lastFair = serial;
+  game.emit({ type: "order", state: "fair" });
+  return true;
+}
+
+/** The fair: seasonal goods the farm can make, bigger amounts, double bonus. */
+export function makeFairOrder(game: Game): Order | null {
+  const st = game.state;
+  const demand = SEASONS[st.season].demand;
+  const products = availableProducts(game).filter((i) => demand.includes(i));
+  if (products.length === 0) return null;
+  const lines = Math.min(2, products.length);
+  const cap = st.player.capacity;
+  const order: Order = {
+    id: st.stats.orders + 1,
+    lines: products.slice(0, lines).map((item) => ({ item, need: Math.max(6, Math.round((cap * 1.3) / lines)), have: 0 })),
+    reward: 0,
+    fair: true,
+  };
+  order.reward = Math.round(order.lines.reduce((s, l) => s + l.need * game.sellValue(l.item), 0) * FAIR_BONUS);
+  return order;
 }
 
 export function makeOrder(game: Game): Order | null {
@@ -74,8 +123,9 @@ export function countOrderSale(game: Game, item: ItemId) {
   if (o.lines.every((l) => l.have >= l.need)) {
     game.earn(o.reward, false);
     st.stats.orders++;
+    if (o.fair) st.stats.fairs++;
     st.order = null;
     st.orderCooldown = ORDER_COOLDOWN;
-    game.emit({ type: "order", state: "done", reward: o.reward });
+    game.emit({ type: "order", state: "done", reward: o.reward, fair: o.fair });
   }
 }

@@ -1,26 +1,43 @@
 /**
  * Low-poly building kit: cached geometries/materials + a tiny <Part> wrapper.
- * Everything uses flat-shaded Lambert for the toy look.
+ * Everything uses flat-shaded Lambert for the toy look. Materials react to the
+ * seasons (snow on top) unless a subtree is wrapped in <Plain>.
  */
+import { createContext, useContext, type ReactNode } from "react";
 import { BufferGeometry, BoxGeometry, ConeGeometry, CylinderGeometry, DodecahedronGeometry, Float32BufferAttribute, IcosahedronGeometry, MeshLambertMaterial, SphereGeometry, TorusGeometry, type Material } from "three";
 import type { ThreeElements } from "@react-three/fiber";
+import { makeSeasonal, type SeasonKind } from "./seasonLook";
 
 const mats = new Map<string, MeshLambertMaterial>();
 
-export function mat(color: string, opts?: { emissive?: string; transparent?: boolean; opacity?: number }): MeshLambertMaterial {
-  const key = opts ? `${color}|${opts.emissive ?? ""}|${opts.opacity ?? 1}` : color;
+/**
+ * Cached flat colour material. By default it gets snow in winter; glowing or
+ * see-through materials never do.
+ */
+export function mat(color: string, opts?: { emissive?: string; transparent?: boolean; opacity?: number; kind?: SeasonKind }): MeshLambertMaterial {
+  const special = !!opts?.emissive || !!opts?.transparent || (opts?.opacity ?? 1) < 1;
+  const kind: SeasonKind = special ? "plain" : (opts?.kind ?? "snow");
+  const key = `${color}|${opts?.emissive ?? ""}|${opts?.opacity ?? 1}|${kind}`;
   let m = mats.get(key);
   if (!m) {
     m = new MeshLambertMaterial({ color, flatShading: true });
     if (opts?.emissive) m.emissive.set(opts.emissive);
-    if (opts?.transparent || (opts?.opacity ?? 1) < 1) {
+    if (special && (opts?.transparent || (opts?.opacity ?? 1) < 1)) {
       m.transparent = true;
       m.opacity = opts?.opacity ?? 1;
       m.depthWrite = false;
     }
+    makeSeasonal(m, kind);
     mats.set(key, m);
   }
   return m;
+}
+
+const SeasonKindContext = createContext<SeasonKind>("snow");
+
+/** Parts inside stay as they are in every season (characters, animals). */
+export function Plain({ children }: { children: ReactNode }) {
+  return <SeasonKindContext.Provider value="plain">{children}</SeasonKindContext.Provider>;
 }
 
 const geos = new Map<string, BufferGeometry>();
@@ -78,5 +95,6 @@ interface PartProps extends Omit<MeshProps, "geometry" | "material"> {
 
 /** One flat-shaded mesh. `c` = colour, `g` = cached geometry. */
 export function Part({ g, c, m, shadow = true, ...rest }: PartProps) {
-  return <mesh geometry={g} material={m ?? mat(c)} castShadow={shadow} receiveShadow {...rest} />;
+  const kind = useContext(SeasonKindContext);
+  return <mesh geometry={g} material={m ?? mat(c, { kind })} castShadow={shadow} receiveShadow {...rest} />;
 }

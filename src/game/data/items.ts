@@ -19,6 +19,15 @@ export const ITEM_IDS = [
   "flower",
   "honeycomb",
   "honey",
+  "wool",
+  "yarn",
+  "sweater",
+  "strawberry",
+  "jam",
+  "icecream",
+  "pumpkin",
+  "pie",
+  "lantern",
 ] as const;
 
 export type ItemId = (typeof ITEM_IDS)[number];
@@ -57,6 +66,15 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   flower: { id: "flower", name: "Цветы", icon: "💐", price: 0, height: 0.28, color: "#ff7eb6" },
   honeycomb: { id: "honeycomb", name: "Соты", icon: "🧇", price: 3500, height: 0.2, color: "#f5b62a" },
   honey: { id: "honey", name: "Мёд", icon: "🍯", price: 10000, height: 0.36, color: "#f0a020" },
+  wool: { id: "wool", name: "Шерсть", icon: "☁️", price: 0, height: 0.34, color: "#f6f1e4" },
+  yarn: { id: "yarn", name: "Пряжа", icon: "🧶", price: 12000, height: 0.33, color: "#e86fa6" },
+  sweater: { id: "sweater", name: "Свитер", icon: "🧥", price: 30000, height: 0.2, color: "#d9485f" },
+  strawberry: { id: "strawberry", name: "Клубника", icon: "🍓", price: 0, height: 0.24, color: "#e8323c" },
+  jam: { id: "jam", name: "Варенье", icon: "🫙", price: 40000, height: 0.34, color: "#c2185b" },
+  icecream: { id: "icecream", name: "Мороженое", icon: "🍦", price: 90000, height: 0.36, color: "#ffb3cf" },
+  pumpkin: { id: "pumpkin", name: "Тыква", icon: "🎃", price: 0, height: 0.3, color: "#f28c28" },
+  pie: { id: "pie", name: "Тыквенный пирог", icon: "🥧", price: 150000, height: 0.18, color: "#e8a040" },
+  lantern: { id: "lantern", name: "Фонарь-тыква", icon: "🏮", price: 70000, height: 0.33, color: "#ff7a1a" },
 };
 
 export const isSellable = (id: ItemId) => ITEMS[id].price > 0;

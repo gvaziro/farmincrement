@@ -2,28 +2,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatDuration, formatMoney } from "@/game/core/format";
-import type { ItemId } from "@/game/data/items";
+import { ITEMS, type ItemId } from "@/game/data/items";
+import { dayNumber } from "@/game/engine/daycycle";
+import { DAYS_PER_SEASON, SEASONS, nextSeason, seasonDay, seasonTimeLeft, yearNumber } from "@/game/engine/seasons";
+import { WEATHER_NAMES, weatherOfDay, weatherStartsIn } from "@/game/engine/weather";
 import { itemIconUrl, useItemIconsVersion } from "@/render/itemIcons";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI } from "@/runtime/store";
 import { FarmhousePanel } from "./FarmhousePanel";
+import { TabBlockedModal, WhatsNewModal } from "./Notices";
 import { SettingsModal } from "./SettingsModal";
 
 export function Hud({ runtime }: { runtime: Runtime }) {
   return (
     <div className="hud">
-      <TopBar />
+      <TopBar runtime={runtime} />
       <Hint />
       <Toasts />
       <ControlsHint runtime={runtime} />
       <FarmhousePanel runtime={runtime} />
       <OfflineModal />
+      <WhatsNewModal />
       <SettingsModal runtime={runtime} />
+      <TabBlockedModal runtime={runtime} />
     </div>
   );
 }
 
-function TopBar() {
+function TopBar({ runtime }: { runtime: Runtime }) {
   const money = useUI((s) => s.money);
   const stars = useUI((s) => s.stars);
   const [shown, setShown] = useState(money);
@@ -56,14 +62,110 @@ function TopBar() {
         <span className="money__value">{formatMoney(shown)}</span>
       </div>
       <Carry />
+      <DayClock runtime={runtime} />
       {stars > 0 && (
-        <div className="stars" title="Звёзды сезонов: +10% к ценам за каждую">
+        <div className="stars" title="Звёзды наследия: +10% к ценам за каждую">
           ⭐ {stars}
         </div>
       )}
       <button className="icon-btn topbar__settings" aria-label="Настройки" onClick={() => useUI.setState({ settingsOpen: true })}>
         ⚙️
       </button>
+    </div>
+  );
+}
+
+const PHASE_ICON = { dawn: "🌅", day: "☀️", sunset: "🌇", night: "🌙" } as const;
+const PHASE_NAME = { dawn: "Рассвет", day: "День", sunset: "Закат", night: "Ночь" } as const;
+
+/** Season and time of day, top-left. Tap for the season card. */
+function DayClock({ runtime }: { runtime: Runtime }) {
+  const phase = useUI((s) => s.clock.phase);
+  const season = useUI((s) => s.clock.season);
+  const weather = useUI((s) => s.clock.weather);
+  const rainbow = useUI((s) => s.clock.rainbow);
+  const [open, setOpen] = useState(false);
+  const def = SEASONS[season];
+  const sky = rainbow ? "🌈" : weather !== "clear" ? WEATHER_NAMES[weather].icon : null;
+  return (
+    <div className="clock-wrap">
+      <button
+        key={`${season}${phase}`}
+        className={`clock clock--${phase} clock--${season}`}
+        title={`${def.name} · ${PHASE_NAME[phase]}${weather !== "clear" ? ` · ${WEATHER_NAMES[weather].name}` : ""}`}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="clock__icon">{def.icon}</span>
+        <span className="clock__name">{def.name}</span>
+        <span className="clock__phase">{PHASE_ICON[phase]}</span>
+        {sky && <span className="clock__phase">{sky}</span>}
+      </button>
+      {open && <SeasonCard runtime={runtime} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+/** What this season gives, what sells better and how long it lasts. */
+function SeasonCard({ runtime, onClose }: { runtime: Runtime; onClose: () => void }) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => force((n) => n + 1), 1000);
+    const close = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest?.(".clock-wrap")) onClose();
+    };
+    window.addEventListener("pointerdown", close);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("pointerdown", close);
+    };
+  }, [onClose]);
+  const clock = runtime.game.state.dayClock;
+  const def = SEASONS[runtime.game.state.season];
+  const next = SEASONS[nextSeason(def.id)];
+  const left = Math.max(60, seasonTimeLeft(clock));
+  const now = runtime.game.state.weather;
+  const today = weatherOfDay(dayNumber(clock));
+  const soon = weatherStartsIn(clock);
+  const sky =
+    now !== "clear"
+      ? `${WEATHER_NAMES[now].name}${now === "rain" ? " — посадки растут ×1.5" : ""}`
+      : soon !== null
+        ? `Сегодня ещё: ${WEATHER_NAMES[today.kind].name.toLowerCase()}, через ${formatDuration(soon)}`
+        : null;
+  return (
+    <div className={`season-card season-card--${def.id}`} onClick={onClose}>
+      <div className="season-card__head">
+        <span className="season-card__icon">{def.icon}</span>
+        <div>
+          <b>{def.name}</b>
+          <span>
+            день {seasonDay(clock)} из {DAYS_PER_SEASON} · год {yearNumber(clock)}
+          </span>
+        </div>
+      </div>
+      <div className="season-card__row">
+        <span>🎁</span>
+        <span>{def.perk[0].toUpperCase() + def.perk.slice(1)}</span>
+      </div>
+      <div className="season-card__row">
+        <span>📈</span>
+        <span>Спрос ×1.5:</span>
+        <span className="season-card__goods">
+          {def.demand.map((item) => (
+            <ItemIcon key={item} item={item} fallback={ITEMS[item].icon} size={26} />
+          ))}
+        </span>
+      </div>
+      {sky && (
+        <div className="season-card__row">
+          <span>{WEATHER_NAMES[now !== "clear" ? now : today.kind].icon}</span>
+          <span>{sky}</span>
+        </div>
+      )}
+      <div className="season-card__foot">
+        До {next.genitive} {next.icon} — {formatDuration(left)}
+      </div>
     </div>
   );
 }
@@ -111,12 +213,12 @@ function Hint() {
 }
 
 /** Rendered 3D item icon, or the emoji until icons are ready. */
-function ItemIcon({ item, fallback }: { item?: ItemId; fallback: string }) {
+function ItemIcon({ item, fallback, size = 30 }: { item?: ItemId; fallback: string; size?: number }) {
   useItemIconsVersion();
   const url = item ? itemIconUrl(item) : undefined;
   if (!url) return <span className="hint__icon">{fallback}</span>;
   // eslint-disable-next-line @next/next/no-img-element -- data URL rendered at runtime
-  return <img className="hint__img" src={url} alt="" width={30} height={30} draggable={false} />;
+  return <img className="hint__img" src={url} alt={item ? ITEMS[item].name : ""} title={item ? ITEMS[item].name : undefined} width={size} height={size} style={{ width: size, height: size }} draggable={false} />;
 }
 
 function Toasts() {

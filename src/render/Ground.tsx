@@ -7,10 +7,23 @@ import { ZONE_D, ZONE_W, ZONES, type ZoneId } from "@/game/data/layout";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI } from "@/runtime/store";
 import { G, mat } from "./kit";
+import { makeSeasonal, seasonVisual } from "./seasonLook";
 import { grassTextureRepeat } from "./textures";
 
 const LOCKED = new Color("#5c9a47");
-const OUTSIDE = "#6db553";
+const OUTSIDE = new Color("#6db553");
+/** Spring grass is fresher, autumn grass dry and golden (snow comes from the shader). */
+const SPRING_GRASS = new Color("#95dd62");
+const AUTUMN_GRASS = new Color("#b8b255");
+const tmp = new Color();
+
+/** A ground colour as the current season paints it. */
+function seasonal(base: Color, out: Color) {
+  out.copy(base);
+  out.lerp(SPRING_GRASS, seasonVisual.spring * 0.3);
+  out.lerp(AUTUMN_GRASS, seasonVisual.autumn * 0.6);
+  return out;
+}
 
 const TILE = 8;
 
@@ -19,11 +32,14 @@ function groundMaterial(color: string | Color, cx: number, cz: number, w: number
   const tex = grassTextureRepeat(w / TILE, d / TILE);
   const fract = (v: number) => v - Math.floor(v);
   tex.offset.set(fract((cx - w / 2) / TILE), fract(-(cz + d / 2) / TILE));
-  return new MeshLambertMaterial({ color, map: tex });
+  return makeSeasonal(new MeshLambertMaterial({ color, map: tex }), "snow");
 }
 
 export function Ground({ runtime }: { runtime: Runtime }) {
-  const outside = useMemo(() => groundMaterial(OUTSIDE, 0, 0, 400, 400), []);
+  const outside = useMemo(() => groundMaterial(OUTSIDE.clone(), 0, 0, 400, 400), []);
+  useFrame(() => {
+    seasonal(OUTSIDE, outside.color);
+  });
   return (
     <group>
       <mesh rotation-x={-Math.PI / 2} position={[0, -0.02, 0]} receiveShadow material={outside}>
@@ -42,7 +58,7 @@ function ZonePlane({ runtime, id, gx, gz, tint }: { runtime: Runtime; id: ZoneId
   const target = useMemo(() => new Color(tint), [tint]);
   useFrame((_, dt) => {
     const open = runtime.game.state.zones.has(id);
-    material.color.lerp(open ? target : LOCKED, Math.min(1, dt * 2.5));
+    material.color.lerp(seasonal(open ? target : LOCKED, tmp), Math.min(1, dt * 2.5));
   });
   return (
     <mesh rotation-x={-Math.PI / 2} position={[gx * ZONE_W, 0, gz * ZONE_D]} receiveShadow material={material}>

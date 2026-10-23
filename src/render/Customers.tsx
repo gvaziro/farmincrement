@@ -8,6 +8,7 @@ import { MARKET } from "@/game/data/layout";
 import { TUTORIAL_PADS_STEP } from "@/game/engine/tutorial";
 import type { Actor } from "@/game/engine/types";
 import type { Runtime } from "@/runtime/runtime";
+import { useUI } from "@/runtime/store";
 import { Character, type Look } from "./Characters";
 import { G, Part } from "./kit";
 
@@ -20,6 +21,8 @@ const SPOTS = [
 
 const SHIRTS = ["#ff8fb1", "#8e7cf0", "#4fc3c8", "#ffb238", "#a3d977", "#f06f5a"];
 const HAIR = ["#6b3e1f", "#2b2b2b", "#d9a441", "#a8542a"];
+const SCARVES = ["#e8413c", "#3fa7ff", "#ffd23f", "#b06cff", "#4fae3a"];
+const BEANIES = ["#e8413c", "#3f8fd9", "#4fae3a", "#ff8fb1"];
 
 type Phase = "hidden" | "in" | "go" | "shop" | "leave" | "out";
 
@@ -66,6 +69,7 @@ function makeNpc(i: number): Npc {
       hatColor: hat === "bow" ? "#ff5d8f" : ["#5a8fd9", "#b06cff", "#ff7a59"][Math.floor(rnd() * 3)],
       skin: ["#ffd2a6", "#f2b98a", "#d99a6c", "#ffe0c2"][Math.floor(rnd() * 4)],
       hair: HAIR[Math.floor(rnd() * HAIR.length)],
+      scarf: SCARVES[Math.floor(rnd() * SCARVES.length)],
     },
     phase: "hidden",
     t: 1 + i * 2.5,
@@ -88,6 +92,8 @@ const COUNT = 3;
 /** Ambient villagers who visit the market — pure decoration. */
 export function Customers({ runtime }: { runtime: Runtime }) {
   const npcs = useMemo(() => Array.from({ length: COUNT }, (_, i) => makeNpc(i)), []);
+  // Winter: everyone in a knitted hat.
+  const winter = useUI((s) => s.settings.seasons && s.clock.season === "winter");
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 0.1);
@@ -172,8 +178,14 @@ export function Customers({ runtime }: { runtime: Runtime }) {
 
   return (
     <group>
-      {npcs.map((n) => (
-        <Character key={n.actor.id} get={() => n.actor} look={n.look} scaleOf={() => n.scale} hand={<Bag npc={n} />} />
+      {npcs.map((n, i) => (
+        <Character
+          key={`${n.actor.id}${winter ? "w" : ""}`}
+          get={() => n.actor}
+          look={winter ? { ...n.look, hat: "beanie", hatColor: BEANIES[i % BEANIES.length] } : n.look}
+          scaleOf={() => n.scale}
+          hand={<Bag npc={n} />}
+        />
       ))}
     </group>
   );

@@ -1,9 +1,12 @@
 import type { Rect } from "../core/math";
 import type { PlayerStatId, WorkerStatId } from "../data/balance";
 import type { CropDef } from "../data/crops";
+import type { HatId } from "../data/hats";
 import type { ItemId } from "../data/items";
 import type { FieldDef, MachineDef, PadDef, PadKind, WorkerDef, ZoneId } from "../data/layout";
 import type { MachineTypeDef } from "../data/machines";
+import type { SeasonId } from "./seasons";
+import type { WeatherKind } from "./weather";
 
 /** Anything that walks and carries a stack: the player and the workers. */
 export interface Actor {
@@ -191,6 +194,16 @@ export interface Stats {
   purchases: number;
   playTime: number;
   orders: number;
+  /** Fairs (seasonal orders) completed. */
+  fairs: number;
+  /** Season changes lived through. */
+  seasons: number;
+  /** Fish caught at night. */
+  nightFish: number;
+  /** Harvests made in the rain. */
+  rainHarvest: number;
+  /** Extra items from the autumn bonus. */
+  bonusHarvest: number;
 }
 
 export interface GameState {
@@ -213,13 +226,29 @@ export interface GameState {
   stats: Stats;
   /** Index into TUTORIAL; >= TUTORIAL.length means finished. */
   tutorial: number;
-  prestige: { stars: number; seasons: number };
-  /** Money earned this season — basis for prestige stars. */
-  seasonEarned: number;
+  /** Prestige: stars (permanent price bonus) and how many generations have farmed here. */
+  prestige: { stars: number; generations: number };
+  /** Money earned by this generation — basis for prestige stars. */
+  runEarned: number;
   /** Rolling estimate of automated income per second (for offline). */
   autoIncome: { acc: number; window: number; rate: number };
+  /** Seconds of play since the farm was founded — drives the day/night cycle and the seasons. */
+  dayClock: number;
+  /** Current season (derived from dayClock, kept in sync by the tick). */
+  season: SeasonId;
+  /** Weather that is properly under way right now (derived from dayClock). */
+  weather: WeatherKind;
   /** Current market order (null while the next one is on cooldown). */
   order: Order | null;
+  /** Serial number of the last season that had its fair (-1 = none yet). */
+  lastFair: number;
+  /** Goods made by machines, per item (kept across generations, like stats). */
+  made: Partial<Record<ItemId, number>>;
+  /** Unlocked achievements (kept across generations). */
+  achievements: Set<string>;
+  achievementTimer: number;
+  /** The farmer's hat (kept across generations). */
+  hat: HatId;
   orderCooldown: number;
   /** Increments whenever entities appear/disappear — React re-renders on it. */
   structure: number;
@@ -242,7 +271,13 @@ export type GameEvent =
   | { type: "tutorial"; step: number }
   | { type: "statue" }
   | { type: "trashed"; item: ItemId; x: number; z: number }
-  | { type: "order"; state: "new" | "done"; reward?: number };
+  | { type: "order"; state: "new" | "fair" | "expired" | "done"; reward?: number; fair?: boolean }
+  | { type: "dayPhase"; phase: "night" | "dawn" }
+  | { type: "season"; season: SeasonId }
+  | { type: "weather"; kind: WeatherKind; from: WeatherKind }
+  | { type: "achievement"; id: string }
+  /** Autumn: a harvest gave one item extra. */
+  | { type: "bonusHarvest"; item: ItemId; x: number; z: number; player: boolean };
 
 export interface OrderLine {
   item: ItemId;
@@ -255,4 +290,6 @@ export interface Order {
   lines: OrderLine[];
   /** Bonus paid on completion, on top of the normal sale price. */
   reward: number;
+  /** A seasonal fair order (last day of a season): seasonal goods, double bonus. */
+  fair?: boolean;
 }

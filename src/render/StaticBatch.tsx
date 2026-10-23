@@ -4,8 +4,18 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { BufferGeometry, Color, Float32BufferAttribute, Matrix4, Mesh, MeshLambertMaterial, type Group, type Object3D } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { ThreeElements } from "@react-three/fiber";
+import { makeSeasonal, seasonKindOf, type SeasonKind } from "./seasonLook";
 
-const batchMaterial = new MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const batchMaterials = new Map<SeasonKind, MeshLambertMaterial>();
+/** One shared vertex-coloured material per seasonal kind. */
+function batchMaterial(kind: SeasonKind) {
+  let m = batchMaterials.get(kind);
+  if (!m) {
+    m = makeSeasonal(new MeshLambertMaterial({ vertexColors: true, flatShading: true }), kind);
+    batchMaterials.set(kind, m);
+  }
+  return m;
+}
 const inv = new Matrix4();
 const rel = new Matrix4();
 const tint = new Color();
@@ -27,8 +37,8 @@ function collect(obj: Object3D, out: Mesh[]) {
 
 /**
  * Renders its children normally, then bakes every static flat-coloured mesh
- * into one vertex-coloured mesh (one draw call) and hides the originals.
- * Subtrees with userData.dynamic stay live.
+ * into one vertex-coloured mesh per seasonal kind (usually one draw call) and
+ * hides the originals. Subtrees with userData.dynamic stay live.
  */
 export function StaticBatch({ children, shadow = true, ...rest }: { children: ReactNode; shadow?: boolean } & ThreeElements["group"]) {
   const ref = useRef<Group>(null);
@@ -42,7 +52,7 @@ export function StaticBatch({ children, shadow = true, ...rest }: { children: Re
     collect(root, meshes);
     if (meshes.length < 2) return;
 
-    const parts: BufferGeometry[] = [];
+    const groups = new Map<SeasonKind, BufferGeometry[]>();
     for (const mesh of meshes) {
       const src = mesh.geometry;
       const g = src.index ? src.toNonIndexed() : src.clone();
@@ -63,21 +73,30 @@ export function StaticBatch({ children, shadow = true, ...rest }: { children: Re
       }
       g.setAttribute("color", new Float32BufferAttribute(colors, 3));
       if (!g.getAttribute("normal")) g.computeVertexNormals();
-      parts.push(g);
+      const kind = seasonKindOf(mat);
+      let list = groups.get(kind);
+      if (!list) groups.set(kind, (list = []));
+      list.push(g);
     }
-    const merged = mergeGeometries(parts, false);
-    for (const p of parts) p.dispose();
-    if (!merged) return;
-    merged.computeBoundingSphere();
-    const batch = new Mesh(merged, batchMaterial);
-    batch.castShadow = shadow;
-    batch.receiveShadow = true;
-    batch.userData.batch = true;
-    root.add(batch);
+    const batches: Mesh[] = [];
+    for (const [kind, parts] of groups) {
+      const merged = mergeGeometries(parts, false);
+      for (const p of parts) p.dispose();
+      if (!merged) continue;
+      merged.computeBoundingSphere();
+      const batch = new Mesh(merged, batchMaterial(kind));
+      batch.castShadow = shadow;
+      batch.receiveShadow = true;
+      batch.userData.batch = true;
+      root.add(batch);
+      batches.push(batch);
+    }
     for (const m of meshes) m.visible = false;
     return () => {
-      root.remove(batch);
-      merged.dispose();
+      for (const b of batches) {
+        root.remove(b);
+        b.geometry.dispose();
+      }
       for (const m of meshes) m.visible = true;
     };
   }, [shadow]);

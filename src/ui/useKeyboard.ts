@@ -1,11 +1,22 @@
 import { useEffect } from "react";
 import type { Game } from "@/game/engine/Game";
+import { updateSettings, useUI } from "@/runtime/store";
+import { toggleFullscreen } from "./fullscreen";
 import { addZoom, applyInput, input } from "./input";
+import { NEWS_VERSION } from "./news";
 
 const UP = new Set(["KeyW", "ArrowUp"]);
 const DOWN = new Set(["KeyS", "ArrowDown"]);
 const LEFT = new Set(["KeyA", "ArrowLeft"]);
 const RIGHT = new Set(["KeyD", "ArrowRight"]);
+
+/** Esc: close whatever window is open (the farmhouse panel, settings, notices). */
+function closeWindows() {
+  const ui = useUI.getState();
+  if (ui.tabBlocked) return;
+  if (ui.news) updateSettings({ seenNews: NEWS_VERSION });
+  useUI.setState({ panel: null, settingsOpen: false, offline: null, news: false });
+}
 
 export function useKeyboard(game: Game) {
   useEffect(() => {
@@ -24,13 +35,23 @@ export function useKeyboard(game: Game) {
       applyInput(game);
     };
     const down = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
+      // Typing a save code must not walk the farmer around.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (UP.has(e.code) || DOWN.has(e.code) || LEFT.has(e.code) || RIGHT.has(e.code)) {
         held.add(e.code);
         recompute();
         e.preventDefault();
       } else if (e.code === "Equal" || e.code === "NumpadAdd") addZoom(-0.12);
       else if (e.code === "Minus" || e.code === "NumpadSubtract") addZoom(0.12);
+      else if (e.code === "Escape") closeWindows();
+      else if (e.code === "KeyM" && !e.repeat) {
+        // Mute everything, or bring everything back.
+        const s = useUI.getState().settings;
+        const on = !(s.sound || s.music);
+        updateSettings({ sound: on, music: on });
+      } else if (e.code === "KeyF" && !e.repeat) toggleFullscreen();
     };
     const up = (e: KeyboardEvent) => {
       if (held.delete(e.code)) recompute();

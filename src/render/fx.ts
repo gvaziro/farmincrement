@@ -38,6 +38,7 @@ export interface FloatText {
 }
 
 const MAX_PARTICLES = 1400;
+const CONFETTI = ["#ff5d73", "#ffd23f", "#3fa7ff", "#4fd16b", "#b06cff", "#ff9f1c"];
 const tmpColor = new Color();
 
 class Fx {
@@ -83,8 +84,7 @@ class Fx {
     }
   }
 
-  confetti(x: number, y: number, z: number, count = 46) {
-    const colors = ["#ff5d73", "#ffd23f", "#3fa7ff", "#4fd16b", "#b06cff", "#ff9f1c"];
+  confetti(x: number, y: number, z: number, count = 46, colors: readonly string[] = CONFETTI) {
     for (let i = 0; i < count; i++) {
       const p = this.spawn(0, x + (Math.random() - 0.5) * 0.6, y, z + (Math.random() - 0.5) * 0.6, colors[i % colors.length]);
       const a = Math.random() * Math.PI * 2;
@@ -141,6 +141,20 @@ class Fx {
     p.drag = 2;
     p.spin = 0;
     p.grow = 0.6;
+  }
+
+  /** A raindrop hitting the ground. */
+  splash(x: number, z: number) {
+    const p = this.spawn(1, x, 0.06, z, "#cfe3f5");
+    p.vx = 0;
+    p.vz = 0;
+    p.vy = 0.4;
+    p.max = 0.28;
+    p.size = 0.06;
+    p.gravity = 0;
+    p.drag = 4;
+    p.spin = 0;
+    p.grow = 2.2;
   }
 
   /** Ring of puffs — something appeared / was hired. */

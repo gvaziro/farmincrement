@@ -2,13 +2,17 @@ import { OPERATOR_BOOST, machineCapacity, machineSpeedMult } from "../../data/ba
 import { ITEMS } from "../../data/items";
 import { inputSlot } from "../anchors";
 import type { Game } from "../Game";
+import { seasonMachineSpeed } from "../seasons";
 import type { Machine } from "../types";
 
-export const machineSpeed = (m: Machine) => machineSpeedMult(m.level) * (m.operator ? OPERATOR_BOOST : 1);
+/** Speed multiplier from level, operator and the season (`boost`). */
+export const machineSpeed = (m: Machine, boost = 1) => machineSpeedMult(m.level) * (m.operator ? OPERATOR_BOOST : 1) * boost;
 /** Seconds per produced item at the current level. */
-export const machineCycle = (m: Machine) => m.type.time / machineSpeed(m);
+export const machineCycle = (m: Machine, boost = 1) => m.type.time / machineSpeed(m, boost);
 
 export function updateMachines(game: Game, dt: number) {
+  // Winter: warm workshops run faster.
+  const boost = seasonMachineSpeed(game.state.season);
   for (const m of game.state.machines) {
     m.spawnT += dt;
     m.pulse = Math.max(0, m.pulse - dt * 3);
@@ -17,9 +21,10 @@ export function updateMachines(game: Game, dt: number) {
     // A loop so very fast machines can finish several cycles per frame.
     for (let guard = 0; guard < 4 && budget > 0; guard++) {
       if (!m.working && !tryStart(game, m)) break;
-      const need = (1 - m.progress) * machineCycle(m);
+      const cycle = machineCycle(m, boost);
+      const need = (1 - m.progress) * cycle;
       if (budget < need) {
-        m.progress += budget / machineCycle(m);
+        m.progress += budget / cycle;
         budget = 0;
       } else {
         budget -= need;
@@ -68,6 +73,8 @@ function finish(game: Game, m: Machine) {
     game.flight(item, core.x, core.y, core.z, { kind: "pileOut", machine: m.id, slot }, 0.34, 1.0);
   }
   m.produced++;
+  const made = game.state.made;
+  made[item] = (made[item] ?? 0) + m.type.output.amount;
   m.working = false;
   m.progress = 0;
   m.pulse = 1;

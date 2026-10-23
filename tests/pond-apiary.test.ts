@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { POND, fieldById } from "@/game/data/layout";
+import { PADS, POND, fieldById, padById } from "@/game/data/layout";
 import { Game } from "@/game/engine/Game";
 import { TUTORIAL_DONE } from "@/game/engine/tutorial";
 import { isLand } from "@/game/engine/world";
@@ -104,10 +104,18 @@ describe("apiary", () => {
     expect(g.state.player.stack.filter((i) => i === "flower").length).toBeGreaterThan(2);
   });
 
-  it("the statue now waits for the apiary", () => {
-    const g = unlockUpTo(fresh(), "hire_c_conf_depot");
+  it("the statue is the very last goal: it needs every plot", () => {
+    const need = new Set<string>();
+    const visit = (id: string) => {
+      if (need.has(id)) return;
+      need.add(id);
+      for (const r of padById(id)!.requires) visit(r);
+    };
+    visit("statue");
+    for (const p of PADS) if (p.effect.type === "zone") expect(need.has(p.id), p.id).toBe(true);
+    const g = unlockUpTo(fresh(), "hire_c_honey_market");
     expect(g.pad("statue")!.visible).toBe(false);
-    unlockUpTo(g, "hire_c_honey_market");
-    expect(g.pad("statue")!.visible).toBe(true);
+    unlockUpTo(g, "statue");
+    expect(g.state.statue).toBe(true);
   });
 });

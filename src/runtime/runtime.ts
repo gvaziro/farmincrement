@@ -6,28 +6,59 @@ import { sfx } from "@/audio/sfx";
 import { formatMoney } from "@/game/core/format";
 import { ITEMS, type ItemId } from "@/game/data/items";
 import { MARKET, ZONE_D, ZONE_W, ZONES, zoneById } from "@/game/data/layout";
+import { dayNumber, dayPhase, nightFactor, timeOfDay } from "@/game/engine/daycycle";
 import { Game } from "@/game/engine/Game";
-import { SAVE_KEY, deserialize, isFutureSave, offlineEarnings, serialize } from "@/game/engine/save";
+import { HATS } from "@/game/data/hats";
+import { achievementById } from "@/game/engine/achievements";
+import { SEASONS } from "@/game/engine/seasons";
+import { WEATHER_NAMES, rainbowAt, weatherAt } from "@/game/engine/weather";
+import { SAVE_KEY, deserialize, isFutureSave, offlineEarnings, serialize, type SaveData } from "@/game/engine/save";
+import { encodeSave } from "@/game/engine/saveCode";
 import { TUTORIAL, tutorialText } from "@/game/engine/tutorial";
 import type { GameEvent } from "@/game/engine/types";
 import { fx } from "@/render/fx";
-import { pushToast, useUI } from "./store";
+import { NEWS_VERSION } from "@/ui/news";
+import { addBackup, migrateLegacyBackups, type Backup, type BackupReason } from "./backups";
+import { pushToast, updateSettings, useUI } from "./store";
+import { LOCK_BEAT, LOCK_KEY, TabLock, tabId } from "./tabLock";
 
 const SAVE_EVERY = 5;
 const UI_EVERY = 0.1;
+/** An automatic backup every this many seconds of play. */
+const BACKUP_EVERY = 600;
 
 export class Runtime {
   game: Game;
   private saveTimer = 0;
   private uiTimer = 0;
+  private backupTimer = 0;
   private hiddenAt: number | null = null;
-  private resetting = false;
+  /** Set right before a reload that replaced the save: nothing may write it again. */
+  private reloading = false;
+  private readonly lock: TabLock | null;
+  /** Another tab owns the farm: this one neither simulates nor saves. */
+  private passive = false;
+  private channel: BroadcastChannel | null = null;
+  /** When the save was last written (ms), for the settings screen. */
+  lastSaveAt = 0;
+  /** The save as it was loaded — kept as a "when the game started" backup. */
+  private loadedRaw: string | null = null;
 
   constructor() {
     let savedAt = 0;
     let game: Game | null = null;
+    let lock: TabLock | null = null;
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
+      migrateLegacyBackups(localStorage);
+      lock = new TabLock(tabId(), localStorage);
+      this.passive = !lock.acquire();
+    } catch {
+      /* no storage: nothing to lock or back up */
+    }
+    this.lock = lock;
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(SAVE_KEY);
       if (raw) {
         const data = JSON.parse(raw);
         if (isFutureSave(data)) throw new Error("save comes from a newer version of the game");
@@ -36,16 +67,95 @@ export class Runtime {
         // Touch everything the first frame needs, so a bad save fails here.
         tutorialText(game);
         game.goal();
+        this.loadedRaw = raw;
       }
     } catch (err) {
       console.warn("Save could not be loaded, starting fresh (a backup was kept)", err);
-      backupSave();
+      // Keep the unreadable (or newer-version) save instead of overwriting it.
+      if (raw) this.keep("broken", raw);
       game = null;
       savedAt = 0;
     }
     this.game = game ?? new Game();
-    if (savedAt > 0) this.grantOffline((Date.now() - savedAt) / 1000);
+    this.savedAt = savedAt;
+  }
+
+  private savedAt = 0;
+  private started = false;
+
+  /**
+   * Push the initial state to the HUD, pay offline income, start watching
+   * the other tabs. Called from an effect (not during render), once.
+   */
+  start() {
+    if (this.started) return;
+    this.started = true;
+    this.watchTabs();
+    if (this.passive) {
+      useUI.setState({ tabBlocked: "other" });
+      sfx.suspend(true);
+    } else {
+      if (this.loadedRaw) this.keep("start", this.loadedRaw);
+      if (this.savedAt > 0) this.grantOffline((Date.now() - this.savedAt) / 1000);
+    }
+    // Returning players get a "what's new"; new ones have nothing to compare with.
+    if (useUI.getState().settings.seenNews < NEWS_VERSION) {
+      if (this.loadedRaw) useUI.setState({ news: true });
+      else updateSettings({ seenNews: NEWS_VERSION });
+    }
     this.syncUI();
+  }
+
+  // ── one tab at a time ─────────────────────────────────────────────────
+  private watchTabs() {
+    const lock = this.lock;
+    if (!lock) return;
+    setInterval(() => {
+      // A missing lock (storage cleared) is simply taken back.
+      if (!this.passive && !lock.beat() && !lock.acquire()) this.becomePassive("taken");
+    }, LOCK_BEAT);
+    window.addEventListener("storage", (e) => {
+      // Only another tab *taking* the lock matters; one closing (releasing it) does not.
+      if (e.key === LOCK_KEY && !this.passive && lock.heldElsewhere()) this.becomePassive("taken");
+    });
+    if (typeof BroadcastChannel !== "undefined") {
+      this.channel = new BroadcastChannel("tiny-farm-empire");
+      // Another tab is about to take over: hand it the freshest progress.
+      this.channel.onmessage = (e) => {
+        if (e.data !== "save-now" || this.passive) return;
+        this.save();
+        this.becomePassive("taken");
+      };
+    }
+  }
+
+  private becomePassive(reason: "other" | "taken") {
+    if (this.passive) return;
+    this.passive = true;
+    useUI.setState({ tabBlocked: reason, panel: null, settingsOpen: false });
+    sfx.suspend(true);
+  }
+
+  /** "Play here": ask the active tab to save, take the lock, reload with its progress. */
+  takeOver() {
+    this.channel?.postMessage("save-now");
+    setTimeout(() => {
+      this.lock?.acquire(true);
+      this.reloading = true;
+      window.location.reload();
+    }, 400);
+  }
+
+  /** The page is going away (closed, reloaded, sent to the back-forward cache). */
+  unload() {
+    this.save();
+    this.lock?.release();
+  }
+
+  /** Coming back from the back-forward cache: someone may have taken over meanwhile. */
+  pageShow(persisted: boolean) {
+    if (!persisted || this.passive || !this.lock) return;
+    if (!this.lock.acquire()) this.becomePassive("taken");
   }
 
   private grantOffline(seconds: number) {
@@ -58,10 +168,23 @@ export class Runtime {
 
   /** Called every frame from the R3F loop. */
   frame(dt: number) {
+    // The farm lives in another tab: show it frozen, change nothing.
+    if (this.passive) return;
     this.game.tick(dt);
     for (const e of this.game.drainEvents()) this.handle(e);
     fx.update(dt);
-    if (useUI.getState().structure !== this.game.state.structure) {
+    const ui = useUI.getState();
+    const st = this.game.state;
+    const visual = ui.settings.seasons;
+    const w = weatherAt(st.dayClock);
+    sfx.ambient(
+      dt,
+      ui.settings.dayNight ? nightFactor(timeOfDay(st.dayClock)) : 0,
+      visual ? st.season : "summer",
+      visual ? st.weather : "clear",
+      visual && w.kind === "rain" ? w.k : 0,
+    );
+    if (ui.structure !== this.game.state.structure) {
       useUI.setState({ structure: this.game.state.structure });
     }
     this.uiTimer += dt;
@@ -71,17 +194,30 @@ export class Runtime {
     }
     this.saveTimer += dt;
     if (this.saveTimer >= SAVE_EVERY) this.save();
+    this.backupTimer += dt;
+    if (this.backupTimer >= BACKUP_EVERY) {
+      this.backupTimer = 0;
+      this.backup("auto");
+    }
   }
 
+  /** Write the save. Only the tab that owns the farm does; returns whether it did. */
   save() {
     this.saveTimer = 0;
-    if (this.resetting) return;
+    if (this.reloading || this.passive) return false;
+    if (this.lock && !this.lock.owns() && !this.lock.acquire()) {
+      this.becomePassive("taken");
+      return false;
+    }
     try {
       // While the tab is hidden the simulation is paused: stamp the moment it
       // stopped, so closing a hidden tab still earns offline income for it.
       localStorage.setItem(SAVE_KEY, JSON.stringify(serialize(this.game.state, this.hiddenAt ?? Date.now())));
+      this.lastSaveAt = Date.now();
+      return true;
     } catch {
       /* storage full or unavailable */
+      return false;
     }
   }
 
@@ -90,15 +226,73 @@ export class Runtime {
     if (hidden) {
       this.hiddenAt = Date.now();
       this.save();
-    } else if (this.hiddenAt) {
-      this.grantOffline((Date.now() - this.hiddenAt) / 1000);
+    } else {
+      // Asleep in the background, the lock may have gone to another tab.
+      if (!this.passive && this.lock && !this.lock.owns() && !this.lock.acquire()) this.becomePassive("taken");
+      if (this.hiddenAt && !this.passive) this.grantOffline((Date.now() - this.hiddenAt) / 1000);
       this.hiddenAt = null;
     }
-    sfx.suspend(hidden);
+    sfx.suspend(hidden || this.passive);
+  }
+
+  // ── backups, export, import ───────────────────────────────────────────
+  private keep(reason: BackupReason, raw: string) {
+    try {
+      addBackup(localStorage, reason, raw);
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
+  /** Back up the farm as it is right now. */
+  backup(reason: BackupReason) {
+    if (this.passive) return;
+    this.keep(reason, JSON.stringify(serialize(this.game.state)));
+  }
+
+  /** The save as a one-line code (to paste in another browser). */
+  exportCode() {
+    return encodeSave(serialize(this.game.state));
+  }
+
+  /** The save as pretty JSON (for a file). */
+  exportJson() {
+    return JSON.stringify(serialize(this.game.state), null, 1);
+  }
+
+  /** Replace the farm with `data` (the current one is backed up first) and reload. */
+  importSave(data: SaveData) {
+    this.backup("import");
+    // No offline income for the time the save spent in a file.
+    this.replaceSave(JSON.stringify({ ...data, savedAt: Date.now() }));
+  }
+
+  /** Go back to a backup (the current farm is backed up first) and reload. */
+  restoreBackup(b: Backup) {
+    this.backup("restore");
+    let raw = b.raw;
+    try {
+      raw = JSON.stringify({ ...JSON.parse(b.raw), savedAt: Date.now() });
+    } catch {
+      /* keep it as it is: the loader will deal with it */
+    }
+    this.replaceSave(raw);
+  }
+
+  private replaceSave(raw: string) {
+    try {
+      localStorage.setItem(SAVE_KEY, raw);
+    } catch {
+      pushToast("Не получилось записать сохранение: память браузера заполнена", "⚠️");
+      return;
+    }
+    this.reloading = true;
+    window.location.reload();
   }
 
   resetProgress() {
-    this.resetting = true;
+    this.backup("reset");
+    this.reloading = true;
     try {
       localStorage.removeItem(SAVE_KEY);
     } catch {
@@ -108,6 +302,7 @@ export class Runtime {
   }
 
   prestige() {
+    this.backup("prestige");
     if (!this.game.prestige()) return;
     fx.reset();
     for (const e of this.game.drainEvents()) this.handle(e);
@@ -127,6 +322,11 @@ export class Runtime {
     const money = Math.floor(st.money);
     const carried = st.player.stack.length;
     const cap = st.player.capacity;
+    const day = dayNumber(st.dayClock);
+    const phase = dayPhase(timeOfDay(st.dayClock));
+    const season = st.season;
+    const weather = st.weather;
+    const rainbow = rainbowAt(st.dayClock) > 0.3;
     const changed =
       ui.money !== money ||
       ui.hint?.text !== hint?.text ||
@@ -135,9 +335,16 @@ export class Runtime {
       ui.stars !== st.prestige.stars ||
       ui.statue !== st.statue ||
       ui.carry[0] !== carried ||
-      ui.carry[1] !== cap;
+      ui.carry[1] !== cap ||
+      ui.clock.day !== day ||
+      ui.clock.phase !== phase ||
+      ui.clock.season !== season ||
+      ui.clock.weather !== weather ||
+      ui.clock.rainbow !== rainbow ||
+      ui.hat !== st.hat ||
+      ui.trophies !== st.achievements.size;
     if (changed || ui.panel) {
-      useUI.setState({ money, hint, goal, stars: st.prestige.stars, statue: st.statue, carry: [carried, cap], tick: ui.tick + 1 });
+      useUI.setState({ money, hint, goal, stars: st.prestige.stars, statue: st.statue, carry: [carried, cap], clock: { day, phase, season, weather, rainbow }, hat: st.hat, trophies: st.achievements.size, tick: ui.tick + 1 });
     }
   }
 
@@ -250,13 +457,53 @@ export class Runtime {
         if (e.state === "new") {
           pushToast("Новый заказ на рынке!", "📋");
           sfx.play("ding");
+        } else if (e.state === "fair") {
+          pushToast("Ярмарка! Сезонный заказ — награда ×2", "🎪");
+          sfx.play("season");
+        } else if (e.state === "expired") {
+          pushToast("Ярмарка закончилась — до следующего сезона!", "🎪");
         } else {
-          fx.confetti(MARKET.x, 3.2, MARKET.z, 40);
-          fx.text(`Заказ! +$${formatMoney(e.reward ?? 0)}`, MARKET.x, 4.4, MARKET.z, "big");
+          fx.confetti(MARKET.x, 3.2, MARKET.z, e.fair ? 90 : 40);
+          fx.text(`${e.fair ? "Ярмарка" : "Заказ"}! +${formatMoney(e.reward ?? 0)}`, MARKET.x, 4.4, MARKET.z, "big");
           sfx.play("cash");
           sfx.play("purchase");
           vibrate([20, 30, 20]);
         }
+        break;
+      case "dayPhase":
+        // Only worth a toast once the pond is there to take advantage of it.
+        if (e.phase === "night" && this.game.state.zones.has("pond")) {
+          pushToast("Ночь: рыба клюёт вдвое чаще!", "🎣");
+        }
+        break;
+      case "season": {
+        const def = SEASONS[e.season];
+        pushToast(`${def.arrival}: ${def.perk}`, def.icon);
+        pushToast(`Сезонный спрос ×1.5: ${def.demand.map((i) => ITEMS[i].name.toLowerCase()).join(", ")}`, "📈");
+        const p = this.game.state.player;
+        fx.confetti(p.x, 1.2, p.z, 50, SEASON_CONFETTI[e.season]);
+        sfx.play("season");
+        break;
+      }
+      case "weather":
+        if (e.kind === "rain") pushToast("Дождь! Посадки растут в 1.5 раза быстрее", WEATHER_NAMES.rain.icon);
+        else if (e.kind === "snow") pushToast("Снегопад — красота!", WEATHER_NAMES.snow.icon);
+        else if (e.kind === "fog") pushToast("Утренний туман", WEATHER_NAMES.fog.icon);
+        else if (e.from === "rain" && (this.game.state.season === "spring" || this.game.state.season === "summer")) pushToast("После дождя — радуга!", "🌈");
+        break;
+      case "achievement": {
+        const a = achievementById(e.id);
+        if (!a) break;
+        pushToast(`Достижение: ${a.name}`, a.icon);
+        if (a.hat) pushToast(`Новая шляпа — ${HATS[a.hat].name}! Надень её в доме фермера`, HATS[a.hat].icon);
+        const p = this.game.state.player;
+        fx.confetti(p.x, 1.6, p.z, 36, ["#ffd23f", "#ffcc33", "#fff1a8", "#ff9f1c"]);
+        sfx.play("level");
+        break;
+      }
+      case "bonusHarvest":
+        if (e.player || this.nearPlayer(e.x, e.z, 8)) fx.text("+1", e.x, 1.4, e.z, "level");
+        if (e.player) sfx.play("pick");
         break;
       case "statue": {
         const p = this.game.state.player;
@@ -269,23 +516,24 @@ export class Runtime {
   }
 }
 
-/** Keep an unreadable (or newer-version) save instead of overwriting it. */
-function backupSave() {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) localStorage.setItem(`${SAVE_KEY}/backup-${Date.now()}`, raw);
-  } catch {
-    /* storage unavailable */
-  }
-}
+/** Confetti colours of each season's arrival. */
+const SEASON_CONFETTI = {
+  spring: ["#ffb7c5", "#ffffff", "#ff8fb1", "#b8f08a"],
+  summer: ["#ffd23f", "#7be35d", "#3fa7ff", "#ff9f1c"],
+  autumn: ["#ff9f1c", "#e8413c", "#ffd23f", "#b5651d"],
+  winter: ["#ffffff", "#cfe8ff", "#9fd2ff", "#e9f6ff"],
+} as const;
 
 /** Short haptic tick on phones (ignored where unsupported). */
 function vibrate(pattern: number | number[]) {
-  if (!useUI.getState().settings.sound) return;
+  if (!useUI.getState().settings.vibration) return;
+  // Browsers reject (and log) vibration before the first tap; desktops can't vibrate.
+  const nav = navigator as Navigator & { userActivation?: { hasBeenActive: boolean } };
+  if (!nav.userActivation?.hasBeenActive || !window.matchMedia?.("(pointer: coarse)").matches) return;
   try {
-    navigator.vibrate?.(pattern);
+    nav.vibrate?.(pattern);
   } catch {
-    /* not allowed without a gesture — fine */
+    /* not allowed — fine */
   }
 }
 

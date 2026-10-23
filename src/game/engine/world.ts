@@ -24,6 +24,8 @@ import {
   type ZoneId,
 } from "../data/layout";
 import { MACHINE_TYPES } from "../data/machines";
+import { seasonOf, seasonWorkerSpeed } from "./seasons";
+import { currentWeather } from "./weather";
 import type {
   Actor,
   Depot,
@@ -189,12 +191,20 @@ export function createInitialState(): GameState {
     flights: [],
     interact: [],
     obstacles: [],
-    stats: { earned: 0, harvested: 0, sold: 0, produced: 0, purchases: 0, playTime: 0, orders: 0 },
+    stats: { earned: 0, harvested: 0, sold: 0, produced: 0, purchases: 0, playTime: 0, orders: 0, fairs: 0, seasons: 0, nightFish: 0, rainHarvest: 0, bonusHarvest: 0 },
     tutorial: 0,
-    prestige: { stars: 0, seasons: 0 },
-    seasonEarned: 0,
+    prestige: { stars: 0, generations: 0 },
+    runEarned: 0,
     autoIncome: { acc: 0, window: 0, rate: 0 },
     order: null,
+    lastFair: -1,
+    made: {},
+    achievements: new Set<string>(),
+    achievementTimer: 0,
+    hat: "straw",
+    dayClock: 0,
+    season: seasonOf(0),
+    weather: currentWeather(0),
     orderCooldown: 6,
     structure: 0,
   };
@@ -202,13 +212,13 @@ export function createInitialState(): GameState {
   return state;
 }
 
-/** Push upgrade levels into actor stats. */
+/** Push upgrade levels (and the season's perk) into actor stats. */
 export function applyStats(state: GameState) {
   const p = state.player;
   p.capacity = statValue(PLAYER_STATS.capacity, state.playerLevels.capacity);
   p.speed = statValue(PLAYER_STATS.speed, state.playerLevels.speed);
   p.reach = statValue(PLAYER_STATS.reach, state.playerLevels.reach);
-  const ws = statValue(WORKER_STATS.speed, state.workerLevels.speed);
+  const ws = statValue(WORKER_STATS.speed, state.workerLevels.speed) * seasonWorkerSpeed(state.season);
   const wc = statValue(WORKER_STATS.capacity, state.workerLevels.capacity);
   for (const w of state.workers) {
     w.speed = ws * (0.95 + (hashString(w.id) % 10) / 100);

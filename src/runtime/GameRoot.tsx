@@ -11,6 +11,7 @@ import { Hud } from "@/ui/Hud";
 import { input } from "@/ui/input";
 import { Joystick } from "@/ui/Joystick";
 import { useKeyboard } from "@/ui/useKeyboard";
+import { weatherOfDay } from "@/game/engine/weather";
 import { getRuntime } from "./runtime";
 import { useUI } from "./store";
 
@@ -19,10 +20,14 @@ export default function GameRoot() {
   const quality = useUI((s) => s.settings.quality);
   const sound = useUI((s) => s.settings.sound);
   const music = useUI((s) => s.settings.music);
+  const soundVolume = useUI((s) => s.settings.soundVolume);
+  const musicVolume = useUI((s) => s.settings.musicVolume);
   const ready = useUI((s) => s.ready);
   const [splashGone, setSplashGone] = useState(false);
 
   useKeyboard(runtime.game);
+
+  useEffect(() => runtime.start(), [runtime]);
 
   useEffect(() => {
     // Icons are rendered from the 3D item models in a throwaway context.
@@ -31,8 +36,8 @@ export default function GameRoot() {
   }, []);
 
   useEffect(() => {
-    // Debug handle for development: window.__tfe.game.state …
-    if (process.env.NODE_ENV !== "production") Object.assign(window, { __tfe: runtime, __tfeInput: input });
+    // Debug handles for development: window.__tfe.game.state …
+    if (process.env.NODE_ENV !== "production") Object.assign(window, { __tfe: runtime, __tfeInput: input, __tfeWeather: weatherOfDay });
   }, [runtime]);
 
   useEffect(() => {
@@ -41,20 +46,27 @@ export default function GameRoot() {
   }, [sound, music]);
 
   useEffect(() => {
+    sfx.setVolume(soundVolume, musicVolume);
+  }, [soundVolume, musicVolume]);
+
+  useEffect(() => {
     const unlock = () => sfx.unlock();
     window.addEventListener("pointerdown", unlock);
     window.addEventListener("keydown", unlock);
     const onVis = () => runtime.visibility(document.hidden);
-    const onUnload = () => runtime.save();
+    const onUnload = () => runtime.unload();
+    const onShow = (e: PageTransitionEvent) => runtime.pageShow(e.persisted);
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("pagehide", onUnload);
     window.addEventListener("beforeunload", onUnload);
+    window.addEventListener("pageshow", onShow);
     return () => {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pagehide", onUnload);
       window.removeEventListener("beforeunload", onUnload);
+      window.removeEventListener("pageshow", onShow);
     };
   }, [runtime]);
 

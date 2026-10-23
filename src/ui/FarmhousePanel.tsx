@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { sfx } from "@/audio/sfx";
-import { formatMoney } from "@/game/core/format";
+import { formatDuration, formatMoney } from "@/game/core/format";
+import { HATS, HAT_IDS } from "@/game/data/hats";
+import { ACHIEVEMENTS, type AchievementDef } from "@/game/engine/achievements";
+import type { Game } from "@/game/engine/Game";
 import { PLAYER_STATS, WORKER_STATS, statMaxLevel, statValue, type LevelledStat, type PlayerStatId, type WorkerStatId } from "@/game/data/balance";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI } from "@/runtime/store";
 
-type Tab = "farmer" | "workers" | "season";
+type Tab = "farmer" | "workers" | "trophies" | "legacy";
 
 export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
   const panel = useUI((s) => s.panel);
@@ -18,8 +21,8 @@ export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
   const g = runtime.game;
   const st = g.state;
   const hasWorkers = st.workers.length > 0;
-  const canSeason = st.statue;
-  const current: Tab = tab === "workers" && !hasWorkers ? "farmer" : tab === "season" && !canSeason ? "farmer" : tab;
+  const canLegacy = st.statue;
+  const current: Tab = tab === "workers" && !hasWorkers ? "farmer" : tab === "legacy" && !canLegacy ? "farmer" : tab;
 
   return (
     <div className="panel" onPointerDown={(e) => e.stopPropagation()}>
@@ -34,9 +37,12 @@ export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
               Работники
             </button>
           )}
-          {canSeason && (
-            <button className={`tab ${current === "season" ? "tab--on" : ""}`} onClick={() => setTab("season")}>
-              Сезон ⭐
+          <button className={`tab ${current === "trophies" ? "tab--on" : ""}`} onClick={() => setTab("trophies")}>
+            Трофеи 🏆
+          </button>
+          {canLegacy && (
+            <button className={`tab ${current === "legacy" ? "tab--on" : ""}`} onClick={() => setTab("legacy")}>
+              Наследие ⭐
             </button>
           )}
         </div>
@@ -68,7 +74,8 @@ export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
               }}
             />
           ))}
-        {current === "season" && <SeasonCard runtime={runtime} />}
+        {current === "trophies" && <Trophies runtime={runtime} />}
+        {current === "legacy" && <LegacyCard runtime={runtime} />}
       </div>
     </div>
   );
@@ -110,7 +117,76 @@ function StatCard({ stat, level, cost, money, onBuy }: { stat: LevelledStat; lev
   );
 }
 
-function SeasonCard({ runtime }: { runtime: Runtime }) {
+/** The wardrobe (hats earned by achievements) and the list of achievements. */
+function Trophies({ runtime }: { runtime: Runtime }) {
+  const g = runtime.game;
+  const st = g.state;
+  const hats = g.hats();
+  return (
+    <div className="trophies">
+      <div className="wardrobe">
+        {HAT_IDS.map((id) => {
+          const owned = hats.includes(id);
+          const by = ACHIEVEMENTS.find((a) => a.hat === id);
+          return (
+            <button
+              key={id}
+              className={`hat ${st.hat === id ? "hat--on" : ""} ${owned ? "" : "hat--locked"}`}
+              disabled={!owned}
+              title={owned ? HATS[id].name : `Достижение «${by?.name}»`}
+              onClick={() => {
+                if (g.wearHat(id)) {
+                  sfx.play("pick");
+                  runtime.syncUI();
+                }
+              }}
+            >
+              <span className="hat__icon">{owned ? HATS[id].icon : "🔒"}</span>
+              <span className="hat__name">{owned ? HATS[id].name : `«${by?.name}»`}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="ach-head">
+        Достижения: <b>{st.achievements.size}</b> из {ACHIEVEMENTS.length}
+      </div>
+      {ACHIEVEMENTS.map((a) => (
+        <AchievementRow key={a.id} a={a} game={g} />
+      ))}
+    </div>
+  );
+}
+
+function AchievementRow({ a, game }: { a: AchievementDef; game: Game }) {
+  const done = game.state.achievements.has(a.id);
+  const v = Math.min(a.goal, a.value(game));
+  const fmt = (n: number) => (a.unit === "money" ? `${formatMoney(n)}` : a.unit === "time" ? formatDuration(n) : formatMoney(Math.floor(n)));
+  return (
+    <div className={`ach ${done ? "ach--done" : ""}`}>
+      <span className="ach__icon">{a.icon}</span>
+      <div className="ach__info">
+        <div className="ach__name">
+          {a.name}
+          {a.hat && (
+            <span className="ach__hat" title={`Награда: ${HATS[a.hat].name}`}>
+              {HATS[a.hat].icon}
+            </span>
+          )}
+        </div>
+        <div className="ach__desc">{a.desc}</div>
+        {!done && (
+          <div className="ach__bar">
+            <span style={{ width: `${(v / a.goal) * 100}%` }} />
+          </div>
+        )}
+      </div>
+      <div className="ach__value">{done ? "✓" : `${fmt(v)} / ${fmt(a.goal)}`}</div>
+    </div>
+  );
+}
+
+/** Prestige: hand the farm over to the next generation for stars. */
+function LegacyCard({ runtime }: { runtime: Runtime }) {
   const [confirm, setConfirm] = useState(false);
   const g = runtime.game;
   const stars = g.prestigeStars();
@@ -118,9 +194,9 @@ function SeasonCard({ runtime }: { runtime: Runtime }) {
     <div className="card card--season">
       <div className="card__icon">⭐</div>
       <div className="card__info">
-        <div className="card__name">Новый сезон</div>
+        <div className="card__name">Новое поколение</div>
         <div className="card__value">
-          Начни ферму заново и получи <b>{stars}</b> ⭐ — это <b>+{stars * 10}%</b> к ценам навсегда.
+          Передай ферму детям: всё начнётся заново, а наследство — <b>{stars}</b> ⭐, это <b>+{stars * 10}%</b> к ценам навсегда.
         </div>
       </div>
       {confirm ? (

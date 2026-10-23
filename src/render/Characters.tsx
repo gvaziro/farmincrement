@@ -2,42 +2,143 @@
 
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
-import { MeshBasicMaterial, type Group } from "three";
+import { MeshBasicMaterial, MeshLambertMaterial, TorusGeometry, type Group } from "three";
 import { easeOutBack } from "@/game/core/math";
+import { HATS, type HatId } from "@/game/data/hats";
 import type { Actor, Worker } from "@/game/engine/types";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI } from "@/runtime/store";
 import { fx } from "./fx";
-import { G, Part } from "./kit";
+import { merge, P, part } from "./geom";
+import { G, Part, Plain } from "./kit";
+import { seasonVisual } from "./seasonLook";
 import { StaticBatch } from "./StaticBatch";
 
 export interface Look {
   shirt: string;
   pants: string;
-  hat: "straw" | "cap" | "hard" | "none" | "bow";
+  hat: HatId | "hard" | "none" | "bow";
   hatColor: string;
   skin: string;
   hair?: string;
+  /** Scarf worn in autumn and winter. */
+  scarf?: string;
 }
 
 const LOOKS: Record<string, Look> = {
-  player: { shirt: "#e0533d", pants: "#3b6fb6", hat: "straw", hatColor: "#f2c94c", skin: "#ffd2a6" },
-  harvester: { shirt: "#58b947", pants: "#6b4f3a", hat: "cap", hatColor: "#3f9b2f", skin: "#f6c08f" },
-  carrier: { shirt: "#ff9f1c", pants: "#4a5a6a", hat: "cap", hatColor: "#e2721b", skin: "#ffd9b5" },
-  operator: { shirt: "#3fa7ff", pants: "#3a4a6a", hat: "hard", hatColor: "#ffd23f", skin: "#e8b48a" },
+  player: { shirt: "#e0533d", pants: "#3b6fb6", hat: "straw", hatColor: "#f2c94c", skin: "#ffd2a6", scarf: "#3f8fd9" },
+  harvester: { shirt: "#58b947", pants: "#6b4f3a", hat: "cap", hatColor: "#3f9b2f", skin: "#f6c08f", scarf: "#e8413c" },
+  carrier: { shirt: "#ff9f1c", pants: "#4a5a6a", hat: "cap", hatColor: "#e2721b", skin: "#ffd9b5", scarf: "#4fae3a" },
+  operator: { shirt: "#3fa7ff", pants: "#3a4a6a", hat: "hard", hatColor: "#ffd23f", skin: "#e8b48a", scarf: "#d9485f" },
 };
+
+const scarfMat = new MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const scarfGeos = new Map<string, ReturnType<typeof merge>>();
+/** A knitted scarf round the neck with one end hanging down (one mesh). */
+function scarfGeometry(color: string) {
+  let g = scarfGeos.get(color);
+  if (!g) {
+    g = merge([
+      part(new TorusGeometry(0.17, 0.065, 5, 12), color, { p: [0, 0.83, 0], r: [Math.PI / 2, 0, 0] }),
+      part(P.box(0.1, 0.28, 0.05), color, { p: [0.09, 0.67, 0.19], r: [0.15, 0, -0.12] }),
+      part(P.box(0.105, 0.04, 0.055), "#ffffff", { p: [0.075, 0.56, 0.205], r: [0.15, 0, -0.12] }),
+    ]);
+    scarfGeos.set(color, g);
+  }
+  return g;
+}
 
 export const blobMat = new MeshBasicMaterial({ color: "#1d3b12", transparent: true, opacity: 0.22, depthWrite: false });
 
+/** Achievement hats (fixed palettes). Head top is at y ≈ 0.26. */
+const FANCY_HATS = {
+  cowboy: () => (
+    <group position={[0, 0.17, 0]}>
+      <Part g={G.cyl(0.4, 0.4, 0.03, 14)} c="#a0612f" />
+      <Part g={G.box(0.12, 0.03, 0.5)} c="#a0612f" position={[-0.36, 0.05, 0]} rotation={[0, 0, 0.55]} />
+      <Part g={G.box(0.12, 0.03, 0.5)} c="#a0612f" position={[0.36, 0.05, 0]} rotation={[0, 0, -0.55]} />
+      <Part g={G.cyl(0.16, 0.2, 0.22, 10)} c="#a0612f" position={[0, 0.12, 0]} />
+      <Part g={G.cyl(0.205, 0.205, 0.045, 10)} c="#5a3a1f" position={[0, 0.04, 0]} />
+      <Part g={G.box(0.05, 0.04, 0.22)} c="#8a5228" position={[0, 0.235, 0]} />
+    </group>
+  ),
+  chef: () => (
+    <group position={[0, 0.15, 0]}>
+      <Part g={G.cyl(0.22, 0.22, 0.14, 12)} c="#ffffff" position={[0, 0.06, 0]} />
+      <Part g={G.sphere(0.25, 10, 8)} c="#ffffff" scale={[1, 0.75, 1]} position={[0, 0.25, 0]} />
+      <Part g={G.sphere(0.13, 8, 6)} c="#f4f4f4" position={[-0.16, 0.24, 0.05]} />
+      <Part g={G.sphere(0.13, 8, 6)} c="#f4f4f4" position={[0.16, 0.24, -0.05]} />
+    </group>
+  ),
+  wreath: () => (
+    <group position={[0, 0.17, 0]}>
+      <Part g={G.torus(0.2, 0.045, 5, 14)} c="#4fae3a" rotation={[Math.PI / 2, 0, 0]} />
+      {["#ff6b8a", "#ffd23f", "#ffffff", "#b98cff", "#ff9f1c", "#ff6b8a"].map((c, i) => {
+        const a = (i / 6) * Math.PI * 2;
+        return <Part key={i} g={G.sphere(0.055, 6, 4)} c={c} position={[Math.cos(a) * 0.2, 0.04, Math.sin(a) * 0.2]} />;
+      })}
+    </group>
+  ),
+  crown: () => (
+    <group position={[0, 0.16, 0]}>
+      <Part g={G.cyl(0.2, 0.2, 0.1, 10)} c="#ffcc33" position={[0, 0.03, 0]} />
+      {[0, 1, 2, 3, 4].map((i) => {
+        const a = (i / 5) * Math.PI * 2 + Math.PI / 2;
+        return <Part key={i} g={G.cone(0.055, 0.15, 5)} c="#ffcc33" position={[Math.cos(a) * 0.18, 0.15, Math.sin(a) * 0.18]} />;
+      })}
+      <Part g={G.sphere(0.035, 6, 4)} c="#e8413c" position={[0, 0.04, 0.2]} />
+      <Part g={G.sphere(0.03, 6, 4)} c="#3fa7ff" position={[-0.12, 0.04, 0.16]} />
+      <Part g={G.sphere(0.03, 6, 4)} c="#3fa7ff" position={[0.12, 0.04, 0.16]} />
+    </group>
+  ),
+  tophat: () => (
+    <group position={[0, 0.17, 0]}>
+      <Part g={G.cyl(0.3, 0.3, 0.03, 14)} c="#2b2b2b" />
+      <Part g={G.cyl(0.17, 0.17, 0.34, 12)} c="#2b2b2b" position={[0, 0.18, 0]} />
+      <Part g={G.cyl(0.175, 0.175, 0.06, 12)} c="#d9485f" position={[0, 0.06, 0]} />
+    </group>
+  ),
+  fisher: () => (
+    <group position={[0, 0.13, 0]}>
+      <Part g={G.cyl(0.2, 0.23, 0.15, 10)} c="#8a9a5b" position={[0, 0.09, 0]} />
+      <Part g={G.cyl(0.25, 0.33, 0.05, 12)} c="#7a8a4b" position={[0, 0.01, 0]} />
+      <Part g={G.sphere(0.04, 5, 4)} c="#e8413c" position={[0.2, 0.1, 0.08]} />
+      <Part g={G.cone(0.03, 0.12, 4)} c="#ffd23f" position={[0.22, 0.17, 0.06]} rotation={[0, 0, -0.4]} />
+    </group>
+  ),
+  pumpkin: () => (
+    <group position={[0, 0.2, 0]}>
+      {[0, 1, 2, 3, 4].map((i) => {
+        const a = (i / 5) * Math.PI * 2;
+        return <Part key={i} g={G.sphere(0.12, 8, 6)} c={i % 2 ? "#f28c28" : "#e07a1c"} position={[Math.cos(a) * 0.08, 0.07, Math.sin(a) * 0.08]} scale={[0.8, 0.85, 0.8]} />;
+      })}
+      <Part g={G.sphere(0.14, 8, 6)} c="#f59a35" scale={[1, 0.8, 1]} position={[0, 0.07, 0]} />
+      <Part g={G.cyl(0.02, 0.03, 0.08, 5)} c="#5a7a2a" position={[0, 0.2, 0]} />
+      <Part g={G.cone(0.06, 0.02, 5)} c="#4fae3a" position={[0.06, 0.2, 0]} rotation={[0, 0, -0.6]} />
+    </group>
+  ),
+  party: () => (
+    <group position={[0, 0.2, 0.02]} rotation={[0.15, 0, 0.1]}>
+      <Part g={G.cone(0.15, 0.36, 10)} c="#ff5d8f" position={[0, 0.18, 0]} />
+      <Part g={G.cyl(0.115, 0.13, 0.04, 10)} c="#ffd23f" position={[0, 0.08, 0]} />
+      <Part g={G.cyl(0.06, 0.075, 0.035, 10)} c="#3fa7ff" position={[0, 0.22, 0]} />
+      <Part g={G.sphere(0.055, 6, 4)} c="#ffd23f" position={[0, 0.37, 0]} />
+    </group>
+  ),
+} as const;
+
 export function Characters({ runtime }: { runtime: Runtime }) {
   const structure = useUI((s) => s.structure);
+  const hat = useUI((s) => s.hat);
   const workers = useMemo(() => {
     void structure;
     return [...runtime.game.state.workers];
   }, [runtime, structure]);
+  const player = useMemo<Look>(() => ({ ...LOOKS.player, hat, hatColor: HATS[hat].color }), [hat]);
   return (
     <group>
-      <Character get={() => runtime.game.state.player} look={LOOKS.player} dust />
+      {/* Keyed by hat: the baked character mesh is rebuilt when the hat changes. */}
+      <Character key={`player-${hat}`} get={() => runtime.game.state.player} look={player} dust />
       {workers.map((w) => (
         <Character key={w.id} get={() => runtime.game.actor(w.id)} look={LOOKS[w.def.job.kind]} />
       ))}
@@ -64,6 +165,7 @@ export function Character({ get, look, scaleOf, dust = false, hand }: CharacterP
   const armR = useRef<Group>(null);
   const head = useRef<Group>(null);
   const dustT = useRef(0);
+  const scarf = useRef<Group>(null);
 
   useFrame((state, dt) => {
     const a: Actor | undefined = get();
@@ -108,6 +210,8 @@ export function Character({ get, look, scaleOf, dust = false, hand }: CharacterP
     const bob = moving ? Math.abs(Math.sin(ph)) * 0.07 : Math.sin(t * 2.4) * 0.012;
     body.current!.position.y = bob;
     body.current!.rotation.x = moving ? 0.1 * swing : 0;
+    // Scarves come out when it gets cold.
+    if (scarf.current) scarf.current.visible = seasonVisual.winter + seasonVisual.autumn >= 0.5;
     head.current!.rotation.z = moving ? Math.sin(ph) * 0.05 : Math.sin(t * 1.3) * 0.04;
 
     // Footstep dust for the player.
@@ -122,6 +226,7 @@ export function Character({ get, look, scaleOf, dust = false, hand }: CharacterP
 
   const s = look;
   return (
+    <Plain>
     <group ref={root}>
       <mesh rotation-x={-Math.PI / 2} position={[0, 0.02, -0.05]} material={blobMat}>
         <circleGeometry args={[0.42, 16]} />
@@ -153,6 +258,11 @@ export function Character({ get, look, scaleOf, dust = false, hand }: CharacterP
             </>
           )}
         </StaticBatch>
+        {s.scarf && (
+          <group ref={scarf} visible={false}>
+            <mesh geometry={scarfGeometry(s.scarf)} material={scarfMat} castShadow />
+          </group>
+        )}
         <group ref={armL} position={[-0.27, 0.76, 0]}>
           <StaticBatch>
             <Part g={G.box(0.11, 0.32, 0.11)} c={s.shirt} position={[0, -0.15, 0]} />
@@ -179,10 +289,23 @@ export function Character({ get, look, scaleOf, dust = false, hand }: CharacterP
         </group>
       </group>
     </group>
+    </Plain>
   );
 }
 
 function Hat({ look }: { look: Look }) {
+  const fancy = FANCY_HATS[look.hat as keyof typeof FANCY_HATS];
+  if (fancy) return fancy();
+  if (look.hat === "beanie") {
+    // Knitted winter hat with a turned-up rim and a pompom.
+    return (
+      <group position={[0, 0.12, 0]}>
+        <Part g={G.sphere(0.235, 10, 6)} c={look.hatColor} scale={[1, 0.82, 1]} position={[0, 0.03, 0]} />
+        <Part g={G.cyl(0.24, 0.24, 0.08, 12)} c="#ffffff" position={[0, -0.02, 0]} />
+        <Part g={G.sphere(0.08, 8, 6)} c="#ffffff" position={[0, 0.24, 0]} />
+      </group>
+    );
+  }
   if (look.hat === "straw") {
     return (
       <group position={[0, 0.17, 0]}>

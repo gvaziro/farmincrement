@@ -123,6 +123,8 @@ export const WORKER_TRANSFER_INTERVAL = 0.14;
 export const ORDER_BONUS = 1.0;
 /** Seconds between finishing an order and the next one appearing. */
 export const ORDER_COOLDOWN = 8;
+/** Bonus of a seasonal fair order (last day of each season). */
+export const FAIR_BONUS = 2.0;
 
 // ── meta ────────────────────────────────────────────────────────────────
 export const OFFLINE_EFFICIENCY = 0.6;

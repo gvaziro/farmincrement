@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isSellable } from "@/game/data/items";
-import { FARMHOUSE, FIELDS, MARKET, PADS, TRASH, WATER_RECTS, fieldById, machineById } from "@/game/data/layout";
+import { FARMHOUSE, FIELDS, LAMPS, MACHINES, MARKET, PADS, TRASH, WATER_RECTS, ZONES, fieldById, machineById } from "@/game/data/layout";
 import { createField } from "@/game/engine/world";
 import { CROPS } from "@/game/data/crops";
 import { MACHINE_TYPES } from "@/game/data/machines";
@@ -18,6 +18,18 @@ describe("layout data", () => {
   it("pad requirements reference existing pads", () => {
     const ids = new Set(PADS.map((p) => p.id));
     for (const p of PADS) for (const r of p.requires) expect(ids.has(r), `${p.id} requires ${r}`).toBe(true);
+  });
+
+  it("every field and machine can be owned: it comes with its plot or has a pad", () => {
+    for (const f of FIELDS) {
+      const viaZone = ZONES.some((z) => z.includes.includes(f.id));
+      const viaPad = PADS.some((p) => p.effect.type === "field" && p.effect.id === f.id);
+      expect(viaZone || viaPad || f.id === "wheat_1", f.id).toBe(true);
+    }
+    for (const m of MACHINES) {
+      const viaPad = PADS.some((p) => p.effect.type === "machine" && p.effect.id === m.id);
+      expect(viaPad || m.cost === 0, m.id).toBe(true);
+    }
   });
 
   it("worker jobs are consistent with machine inputs", () => {
@@ -70,6 +82,8 @@ describe("layout data", () => {
       }
       rects.push({ id: `field ${f.id}`, x: f.x, z: f.z, hw: (f.cols * c.spacing) / 2, hd: (f.rows * (f.rowSpacing ?? c.spacing)) / 2 });
     }
+    // Lamp posts are decor: they must not stand on pads, zones, fields or buildings.
+    for (const [i, l] of LAMPS.entries()) rects.push({ id: `lamp ${i}`, x: l.x, z: l.z, hw: 0.3, hd: 0.3 });
     // The pier and the water must stay clear of buildings and their zones.
     for (const [i, w] of WATER_RECTS.entries()) rects.push({ id: `water ${i}`, ...w });
     const overlaps: string[] = [];

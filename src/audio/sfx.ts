@@ -3,9 +3,11 @@
  * oscillators / noise bursts with short envelopes. Rate-limited per sound so
  * fast loops (selling 50 items) stay pleasant.
  */
+import type { SeasonId } from "@/game/engine/seasons";
+import type { WeatherKind } from "@/game/engine/weather";
 import { Music } from "./music";
 
-type SoundName = "pop" | "drop" | "pick" | "coin" | "tick" | "purchase" | "level" | "full" | "whoosh" | "ding" | "cash";
+type SoundName = "pop" | "drop" | "pick" | "coin" | "tick" | "purchase" | "level" | "full" | "whoosh" | "ding" | "cash" | "season";
 
 const MIN_GAP: Record<SoundName, number> = {
   pop: 0.035,
@@ -19,6 +21,7 @@ const MIN_GAP: Record<SoundName, number> = {
   whoosh: 0.3,
   ding: 0.2,
   cash: 0.15,
+  season: 1,
 };
 
 class Sfx {
@@ -31,6 +34,7 @@ class Sfx {
   readonly music = new Music();
   soundOn = true;
   musicOn = true;
+  private volume = 1;
 
   /** Must be called from a user gesture (browser autoplay policy). */
   unlock() {
@@ -39,7 +43,7 @@ class Sfx {
       if (!Ctx) return;
       this.ctx = new Ctx();
       this.sfxBus = this.ctx.createGain();
-      this.sfxBus.gain.value = 0.55;
+      this.sfxBus.gain.value = 0.55 * this.volume;
       this.sfxBus.connect(this.ctx.destination);
       const len = this.ctx.sampleRate * 0.5;
       this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -58,6 +62,165 @@ class Sfx {
   setMusic(on: boolean) {
     this.musicOn = on;
     this.music.setEnabled(on);
+  }
+
+  /** Volumes 0 … 1 (on top of the on/off switches). */
+  setVolume(sound: number, music: number) {
+    this.volume = sound;
+    if (this.sfxBus && this.ctx) this.sfxBus.gain.setTargetAtTime(0.55 * sound, this.ctx.currentTime, 0.05);
+    this.music.setVolume(music);
+  }
+
+  private chirpIn = 0;
+  private birdIn = 3;
+  private windIn = 2;
+
+  /**
+   * Called every frame with the night level (0 … 1) and the season: crickets
+   * at night, birds on spring and summer days, wind gusts in winter.
+   */
+  ambient(dt: number, night: number, season: SeasonId, weather: WeatherKind, rain: number) {
+    this.music.setMood(night);
+    this.setRain(rain);
+    const ctx = this.ctx;
+    if (!ctx || !this.soundOn || ctx.state !== "running") return;
+    if (night >= 0.6 && season !== "winter") {
+      this.chirpIn -= dt;
+      if (this.chirpIn <= 0) {
+        this.chirpIn = 0.45 + Math.random() * 1.7;
+        this.chirp();
+      }
+    }
+    if (night < 0.3 && weather === "clear" && (season === "spring" || season === "summer")) {
+      this.birdIn -= dt;
+      if (this.birdIn <= 0) {
+        this.birdIn = 2.5 + Math.random() * 5;
+        this.bird();
+      }
+    }
+    if (season === "winter" || weather === "snow") {
+      this.windIn -= dt;
+      if (this.windIn <= 0) {
+        this.windIn = weather === "snow" ? 2.5 + Math.random() * 3 : 5 + Math.random() * 6;
+        this.wind();
+      }
+    }
+  }
+
+  private rainSrc: AudioBufferSourceNode | null = null;
+  private rainGain: GainNode | null = null;
+  private rainLevel = 0;
+
+  /** Steady rain hiss (0 … 1); the source only exists while it rains. */
+  private setRain(k: number) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const target = this.soundOn && ctx.state === "running" && k > 0.02 ? k * 0.1 : 0;
+    // Small changes are not worth an automation event — but reaching zero
+    // always is: that is what stops the source.
+    if (target === this.rainLevel || (target > 0 && Math.abs(target - this.rainLevel) < 0.002)) return;
+    this.rainLevel = target;
+    if (target > 0 && !this.rainSrc) {
+      const len = ctx.sampleRate * 2;
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 600;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 3200;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      src.connect(hp).connect(lp).connect(g).connect(this.sfxBus!);
+      src.start();
+      this.rainSrc = src;
+      this.rainGain = g;
+    }
+    if (!this.rainGain) return;
+    this.rainGain.gain.setTargetAtTime(target, ctx.currentTime, 0.5);
+    if (target === 0) {
+      const src = this.rainSrc;
+      this.rainSrc = null;
+      this.rainGain = null;
+      src?.stop(ctx.currentTime + 2.5);
+    }
+  }
+
+  /** A songbird: two or three quick warbling sweeps. */
+  private bird() {
+    const ctx = this.ctx!;
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = Math.random() * 1.6 - 0.8;
+    pan.connect(this.sfxBus!);
+    const base = 2300 + Math.random() * 1400;
+    const notes = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < notes; i++) {
+      const t = ctx.currentTime + 0.02 + i * (0.09 + Math.random() * 0.05);
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      const f = base * (0.9 + Math.random() * 0.3);
+      osc.frequency.setValueAtTime(f, t);
+      osc.frequency.exponentialRampToValueAtTime(f * (Math.random() < 0.5 ? 1.35 : 0.75), t + 0.07);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.028, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+      osc.connect(g).connect(pan);
+      osc.start(t);
+      osc.stop(t + 0.1);
+    }
+  }
+
+  /** A soft winter gust: slow swell of low-passed noise. */
+  private wind() {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + 0.05;
+    const dur = 2.6 + Math.random() * 1.6;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.Q.value = 0.7;
+    filter.frequency.setValueAtTime(320, t);
+    filter.frequency.linearRampToValueAtTime(520 + Math.random() * 300, t + dur * 0.5);
+    filter.frequency.linearRampToValueAtTime(280, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.05, t + dur * 0.45);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    src.connect(filter).connect(g).connect(this.sfxBus!);
+    src.start(t);
+    src.stop(t + dur + 0.05);
+  }
+
+  /** A cricket: a few quick high pulses, panned randomly. */
+  private chirp() {
+    const ctx = this.ctx!;
+    const t0 = ctx.currentTime + 0.02;
+    const f = 4200 + Math.random() * 700;
+    const pulses = 2 + Math.floor(Math.random() * 3);
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = Math.random() * 1.6 - 0.8;
+    pan.connect(this.sfxBus!);
+    for (let i = 0; i < pulses; i++) {
+      const t = t0 + i * 0.075;
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.02, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+      osc.connect(g).connect(pan);
+      osc.start(t);
+      osc.stop(t + 0.07);
+    }
   }
 
   suspend(hidden: boolean) {
@@ -121,6 +284,11 @@ class Sfx {
       case "ding":
         this.tone("sine", 1046.5, 1046.5, 0.45, 0.1);
         this.tone("sine", 1568, 1568, 0.5, 0.05, 0.05);
+        break;
+      case "season":
+        // A gentle rising chime: a new season has come.
+        [659.25, 783.99, 987.77, 1318.5, 1567.98].forEach((n, i) => this.tone("sine", n, n, 0.9, 0.07, i * 0.11));
+        this.burst(0.9, 0.04, 5200, 0.3);
         break;
     }
   }

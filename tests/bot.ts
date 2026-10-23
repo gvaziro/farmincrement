@@ -192,12 +192,13 @@ export class Bot {
     let bestScore = -Infinity;
     for (const m of this.st.machines) {
       if (!m.type.inputs.some((i) => i.item === item)) continue;
-      // A full machine is still a valid target for raw goods — we wait there.
+      // A full machine is still a valid target for raw goods — we wait there —
+      // but only if every machine that takes them is full.
       const full = (m.inputs[item] ?? 0) >= machineCapacity(m.level) - 2;
       if (full && isSellable(item)) continue;
       const gain = ITEMS[m.type.output.item].price - ITEMS[item].price;
       const dist = Math.hypot(m.inRect.x - this.st.player.x, m.inRect.z - this.st.player.z);
-      const score = gain * 10 - dist - (full ? 50 : 0);
+      const score = gain * 10 - dist - (full ? 1e12 : 0);
       if (score > bestScore) {
         bestScore = score;
         best = m;
@@ -227,12 +228,12 @@ export class Bot {
     }
     for (const f of this.st.fields) {
       const item = CROPS[f.def.crop].item;
-      const target = this.st.machines.find((m) => m.type.inputs.some((i) => i.item === item));
-      if (!target) continue;
-      if ((target.inputs[item] ?? 0) > machineCapacity(target.level) * 0.6) continue;
+      // Any machine that takes this crop and still has room.
+      const targets = this.st.machines.filter((m) => m.type.inputs.some((i) => i.item === item) && (m.inputs[item] ?? 0) <= machineCapacity(m.level) * 0.6);
+      if (targets.length === 0) continue;
       const ripe = f.plants.reduce((s, pl) => s + (bearsFruit(f.crop) ? pl.fruits : pl.growth >= 1 ? 1 : 0), 0);
       if (ripe < 3) continue;
-      const out = ITEMS[MACHINE_TYPES[target.type.id].output.item].price;
+      const out = Math.max(...targets.map((m) => ITEMS[MACHINE_TYPES[m.type.id].output.item].price));
       const value = Math.min(ripe, p.capacity) * Math.max(1, out);
       const dist = Math.hypot(f.rect.x - p.x, f.rect.z - p.z);
       const score = value / (10 + dist);

@@ -10,7 +10,8 @@ import { G, Part } from "../kit";
 import { merge, P, part } from "../geom";
 import { itemGeometry } from "../models/itemModels";
 import { MeshLambertMaterial } from "three";
-import { Chickens, Cows, PenFence, Sign } from "./parts";
+import { Chickens, Cows, PenFence, Sheep, Sign } from "./parts";
+import { lanternMat, windowMat } from "../nightMaterials";
 import { DYNAMIC } from "../StaticBatch";
 
 const itemMat = new MeshLambertMaterial({ vertexColors: true, flatShading: true });
@@ -63,7 +64,7 @@ function Window({ x, y, z, w = 0.6, h = 0.5 }: { x: number; y: number; z: number
   return (
     <group position={[x, y, z]}>
       <Part g={G.box(w + 0.12, h + 0.12, 0.06)} c="#ffffff" />
-      <Part g={G.box(w, h, 0.08)} c="#8fd3f5" />
+      <Part g={G.box(w, h, 0.08)} c="#8fd3f5" m={windowMat} />
       <Part g={G.box(0.05, h, 0.09)} c="#ffffff" />
     </group>
   );
@@ -353,7 +354,7 @@ function Cannery({ m }: { m: Machine }) {
       {[-1.05, 1.05].map((x) => (
         <group key={x} position={[x, 1.25, 1.52]}>
           <Part g={G.box(0.7, 0.6, 0.06)} c="#ffffff" />
-          <Part g={G.box(0.6, 0.5, 0.08)} c="#8fd3f5" />
+          <Part g={G.box(0.6, 0.5, 0.08)} c="#8fd3f5" m={windowMat} />
           <Part g={G.box(0.6, 0.04, 0.09)} c="#ffffff" />
           <Part g={G.box(0.04, 0.5, 0.09)} c="#ffffff" />
         </group>
@@ -474,6 +475,198 @@ function HoneyHouse({ m }: { m: Machine }) {
   );
 }
 
+/** A pen with a shed and fluffy sheep. */
+function Sheepfold({ m }: { m: Machine }) {
+  return (
+    <group>
+      <PenFence w={6.2} d={5.0} color="#e8d2a6" />
+      <Part g={G.box(6.1, 0.04, 4.9)} c="#9ad468" position={[0, 0.02, 0]} shadow={false} />
+      <group position={[-1.6, 0, -1.0]}>
+        <Part g={G.box(2.8, 1.9, 2.6)} c="#f1e3c8" position={[0, 0.95, 0]} />
+        <Part g={G.prism(3.2, 1.25, 2.9)} c="#5a8fd0" position={[0, 1.9, 0]} rotation={[0, Math.PI / 2, 0]} />
+        <Part g={G.box(1.0, 1.3, 0.08)} c="#8a5a33" position={[0.3, 0.65, 1.31]} />
+        <Part g={G.box(1.1, 0.08, 0.1)} c="#ffffff" position={[0.3, 1.32, 1.33]} />
+        <Window x={-0.85} y={1.2} z={1.31} w={0.45} h={0.4} />
+      </group>
+      {/* hay rack */}
+      <Part g={G.box(1.1, 0.5, 0.7)} c="#a8642a" position={[1.9, 0.25, -1.8]} />
+      <Part g={G.box(1.0, 0.25, 0.6)} c="#e8d06a" position={[1.9, 0.6, -1.8]} />
+      <Sheep count={5} bounds={{ minX: 0.3, maxX: 2.5, minZ: -1.1, maxZ: 1.9 }} seed={m.def.z * 11 + 7} />
+      <group position={[-1.6, 3.55, 0.3]}>
+        <ItemProp id="wool" scale={1.9} />
+      </group>
+    </group>
+  );
+}
+
+/** A lilac workshop with a big spinning wheel that turns while it works. */
+function Spinnery({ m }: { m: Machine }) {
+  const wheel = useRef<Group>(null);
+  useFrame((_, dt) => {
+    if (wheel.current) wheel.current.rotation.z -= (m.working ? 3.2 : 0.25) * dt;
+  });
+  return (
+    <group>
+      <House w={3.2} h={2.0} d={2.8} wall="#ece0f5" roof="#8e6cc9" />
+      <Door z={1.42} x={-0.5} />
+      <Window x={0.75} y={1.3} z={1.42} w={0.5} />
+      <group position={[2.05, 0, 0.55]}>
+        <Part g={G.box(0.7, 0.12, 0.5)} c="#8a5a33" position={[0, 0.06, 0]} />
+        <Part g={G.box(0.1, 1.1, 0.1)} c="#a8642a" position={[0, 0.6, -0.12]} />
+        <group ref={wheel} userData={DYNAMIC} position={[0, 1.15, 0.0]}>
+          <Part g={G.torus(0.55, 0.05, 6, 18)} c="#b5763a" />
+          {[0, 1, 2, 3].map((i) => (
+            <Part key={i} g={G.box(0.04, 1.08, 0.04)} c="#c98b52" rotation={[0, 0, (i * Math.PI) / 4]} />
+          ))}
+          <Part g={G.cyl(0.08, 0.08, 0.12, 8)} c="#7a4b26" rotation={[Math.PI / 2, 0, 0]} />
+        </group>
+        <Part g={G.cyl(0.1, 0.12, 0.25, 8)} c="#e86fa6" position={[-0.28, 0.3, 0.15]} />
+      </group>
+      <group position={[0, 3.3, 0.15]}>
+        <ItemProp id="yarn" scale={2.3} />
+      </group>
+    </group>
+  );
+}
+
+/** A cosy knitting house: a giant ball of yarn with clicking needles on top. */
+function Knitting({ m }: { m: Machine }) {
+  const needles = useRef<Group>(null);
+  useSmoke(m, 1.15, 3.7, -0.7, 0.45, "#ffffff");
+  useFrame((state) => {
+    if (needles.current) needles.current.rotation.z = m.working ? Math.sin(state.clock.elapsedTime * 9) * 0.22 : 0;
+  });
+  return (
+    <group>
+      <House w={3.6} h={2.1} d={2.8} wall="#ffe6d8" roof="#d9485f" />
+      <Part g={G.box(0.45, 1.2, 0.45)} c="#b35a3a" position={[1.15, 3.0, -0.7]} />
+      <Part g={G.box(0.56, 0.12, 0.56)} c="#8f4530" position={[1.15, 3.62, -0.7]} />
+      <Door z={1.42} />
+      <Window x={-1.1} y={1.35} z={1.42} />
+      <Window x={1.1} y={1.35} z={1.42} />
+      <group position={[0, 2.62, 1.55]}>
+        <ItemProp id="sweater" scale={1.5} rotation={[1.1, 0, 0]} />
+      </group>
+      <group position={[-0.4, 3.35, -0.1]}>
+        <ItemProp id="yarn" scale={2.6} />
+        <group ref={needles} userData={DYNAMIC} position={[0, 0.45, 0]}>
+          <Part g={G.cyl(0.035, 0.035, 1.3, 6)} c="#cfd8dc" rotation={[0, 0, 0.55]} />
+          <Part g={G.cyl(0.035, 0.035, 1.3, 6)} c="#cfd8dc" rotation={[0, 0, -0.55]} />
+          <Part g={G.sphere(0.07, 6, 4)} c="#ffd23f" position={[-0.33, 0.55, 0]} />
+          <Part g={G.sphere(0.07, 6, 4)} c="#ffd23f" position={[0.33, 0.55, 0]} />
+        </group>
+      </group>
+    </group>
+  );
+}
+
+/** A cottage with a copper pot of jam bubbling on a fire outside. */
+function Jamhouse({ m }: { m: Machine }) {
+  const ladle = useRef<Group>(null);
+  useSmoke(m, 2.0, 1.4, 0.75, 0.25, "#ffe3ef");
+  useFrame((state) => {
+    if (ladle.current) ladle.current.rotation.y = m.working ? state.clock.elapsedTime * 2.5 : 0.6;
+  });
+  return (
+    <group>
+      <House w={3.2} h={2.0} d={2.8} wall="#fff0e6" roof="#c2185b" />
+      <Door z={1.42} x={-0.6} />
+      <Window x={0.75} y={1.3} z={1.42} w={0.5} />
+      <group position={[2.05, 0, 0.75]}>
+        <Part g={G.cyl(0.42, 0.46, 0.22, 8)} c="#8f8a82" position={[0, 0.11, 0]} />
+        <Part g={G.cone(0.2, 0.32, 5)} c="#ff9f1c" position={[0, 0.36, 0]} />
+        <Part g={G.cyl(0.4, 0.3, 0.55, 12)} c="#c87533" position={[0, 0.82, 0]} />
+        <Part g={G.cyl(0.37, 0.37, 0.04, 12)} c="#9c1747" position={[0, 1.08, 0]} />
+        <group ref={ladle} userData={DYNAMIC} position={[0, 1.08, 0]}>
+          <Part g={G.cyl(0.025, 0.025, 0.75, 5)} c="#7a4b26" position={[0.12, 0.25, 0]} rotation={[0, 0, -0.45]} />
+        </group>
+      </group>
+      <group position={[0, 3.15, 0.2]}>
+        <ItemProp id="jam" scale={2.6} />
+      </group>
+    </group>
+  );
+}
+
+/** A pastel ice-cream parlour with a giant cone turning on the roof. */
+function IceCream({ m }: { m: Machine }) {
+  const cone = useRef<Group>(null);
+  useFrame((_, dt) => {
+    if (cone.current) cone.current.rotation.y += (m.working ? 1.2 : 0.3) * dt;
+  });
+  return (
+    <group>
+      <Part g={G.box(4.5, 0.25, 3.5)} c="#e8d9c8" position={[0, 0.125, 0]} />
+      <Part g={G.box(4.2, 2.2, 3.2)} c="#ffd6e5" position={[0, 1.35, 0]} />
+      <Part g={G.box(4.4, 0.22, 3.4)} c="#ffffff" position={[0, 2.55, 0]} />
+      {[-1.75, -1.05, -0.35, 0.35, 1.05, 1.75].map((x, i) => (
+        <Part key={x} g={G.box(0.7, 0.06, 0.7)} c={i % 2 ? "#ffffff" : "#8ed1fc"} position={[x, 2.3, 1.85]} rotation={[0.45, 0, 0]} />
+      ))}
+      <Door z={1.62} />
+      <Window x={-1.3} y={1.4} z={1.62} />
+      <Window x={1.3} y={1.4} z={1.62} />
+      <group ref={cone} userData={DYNAMIC} position={[0.7, 2.66, 0]}>
+        <Part g={G.cone(0.45, 1.2, 10)} c="#e0a96d" position={[0, 0.6, 0]} rotation={[Math.PI, 0, 0]} />
+        <Part g={G.sphere(0.5, 10, 8)} c="#ffc0d9" position={[0, 1.3, 0]} />
+        <Part g={G.sphere(0.42, 10, 8)} c="#fff4dc" position={[0, 1.88, 0]} />
+        <Part g={G.sphere(0.13, 8, 6)} c="#e8323c" position={[0, 2.34, 0]} />
+      </group>
+      <group position={[-1.2, 2.66, 0.3]}>
+        <ItemProp id="strawberry" scale={1.6} />
+      </group>
+    </group>
+  );
+}
+
+/** A warm bakery with a giant pumpkin pie turning on the roof. */
+function PieBakery({ m }: { m: Machine }) {
+  const pie = useRef<Group>(null);
+  useSmoke(m, -1.5, 3.6, -0.7, 0.3);
+  useFrame((_, dt) => {
+    if (pie.current) pie.current.rotation.y += (m.working ? 1.0 : 0.25) * dt;
+  });
+  return (
+    <group>
+      <House w={4.2} h={2.1} d={3.0} wall="#fff1d6" roof="#e8742a" roofH={1.0} />
+      <Part g={G.box(0.45, 1.1, 0.45)} c="#b35a3a" position={[-1.5, 2.95, -0.7]} />
+      <Part g={G.box(0.56, 0.12, 0.56)} c="#8f4530" position={[-1.5, 3.52, -0.7]} />
+      <Door z={1.52} />
+      <Window x={-1.3} y={1.4} z={1.52} />
+      <Window x={1.3} y={1.4} z={1.52} />
+      <ItemProp id="pumpkin" position={[-0.75, 0.25, 1.85]} scale={1.4} rotation={[0, 0.5, 0]} />
+      <ItemProp id="pumpkin" position={[0.75, 0.25, 1.9]} scale={1.1} rotation={[0, -0.4, 0]} />
+      <group ref={pie} userData={DYNAMIC} position={[0.8, 3.0, 0]}>
+        <ItemProp id="pie" scale={3.4} />
+      </group>
+    </group>
+  );
+}
+
+/** A dark wooden workshop hung with glowing jack-o'-lanterns. */
+function LanternShop({ m }: { m: Machine }) {
+  const big = useRef<Group>(null);
+  useFrame((state) => {
+    if (big.current) big.current.scale.setScalar(m.working ? 1 + Math.sin(state.clock.elapsedTime * 6) * 0.05 : 1);
+  });
+  return (
+    <group>
+      <House w={3.2} h={2.0} d={2.8} wall="#7a5340" roof="#4a3a6a" />
+      <Door z={1.42} c="#3a2a1a" />
+      <Window x={-1.0} y={1.3} z={1.42} />
+      {/* a garland of little lights under the eaves */}
+      <Part g={G.box(3.3, 0.03, 0.03)} c="#3a2a1a" position={[0, 2.12, 1.5]} />
+      {[-1.4, -0.7, 0, 0.7, 1.4].map((x) => (
+        <Part key={x} g={G.box(0.14, 0.16, 0.14)} c="#ffd23f" m={lanternMat} position={[x, 2.0, 1.52]} shadow={false} />
+      ))}
+      <ItemProp id="lantern" position={[1.85, 0.25, 1.7]} scale={1.3} />
+      <ItemProp id="lantern" position={[-1.85, 0.25, 1.7]} scale={1.1} />
+      <group ref={big} userData={DYNAMIC} position={[0, 3.15, 0.15]}>
+        <ItemProp id="lantern" scale={2.6} />
+      </group>
+    </group>
+  );
+}
+
 export const MACHINE_MODELS: Record<MachineTypeId, (p: { m: Machine }) => React.JSX.Element> = {
   mill: Mill,
   bakery: Bakery,
@@ -488,6 +681,13 @@ export const MACHINE_MODELS: Record<MachineTypeId, (p: { m: Machine }) => React.
   cannery: Cannery,
   apiary: Apiary,
   honeyhouse: HoneyHouse,
+  sheepfold: Sheepfold,
+  spinnery: Spinnery,
+  knitting: Knitting,
+  jamhouse: Jamhouse,
+  icecream: IceCream,
+  piebakery: PieBakery,
+  lanternshop: LanternShop,
 };
 
 export { Sign };

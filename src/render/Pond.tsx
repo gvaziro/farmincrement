@@ -2,23 +2,32 @@
 
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
-import { MeshLambertMaterial, type Group } from "three";
+import { Color, MeshLambertMaterial, type Group } from "three";
 import { mulberry32 } from "@/game/core/math";
 import { POND } from "@/game/data/layout";
-import { G, Part, mat } from "./kit";
+import { G, Part, Plain, mat } from "./kit";
+import { seasonVisual } from "./seasonLook";
 import { roundedRectGeometry } from "./shapes";
 import { DYNAMIC, StaticBatch } from "./StaticBatch";
 
 const W = POND.water;
 const PIER = POND.pier;
+const WATER = new Color("#5cc6f2");
+const ICE = new Color("#d8eef7");
 
-/** The pond on the south-west plot: water, sandy shore, a pier and ducks. */
+/** The pond on the south-west plot: water (ice in winter), sandy shore, a pier and ducks. */
 export function Pond() {
   const water = useMemo(() => new MeshLambertMaterial({ color: "#5cc6f2", emissive: "#1f6f9a" }), []);
   useFrame((state) => {
-    // Gentle shimmer.
+    // Gentle shimmer; in winter the pond freezes over.
     const t = state.clock.elapsedTime;
-    water.emissive.setRGB(0.07 + Math.sin(t * 0.8) * 0.012, 0.2 + Math.sin(t * 0.6) * 0.02, 0.32 + Math.sin(t * 0.7) * 0.02);
+    const live = 1 - seasonVisual.winter;
+    water.color.lerpColors(WATER, ICE, seasonVisual.winter);
+    water.emissive.setRGB(
+      (0.07 + Math.sin(t * 0.8) * 0.012) * live + 0.04 * (1 - live),
+      (0.2 + Math.sin(t * 0.6) * 0.02) * live + 0.06 * (1 - live),
+      (0.32 + Math.sin(t * 0.7) * 0.02) * live + 0.09 * (1 - live),
+    );
   });
   const w = W.x1 - W.x0;
   const d = W.z1 - W.z0;
@@ -81,8 +90,11 @@ function Ducks() {
     });
   }, []);
   const refs = useRef<(Group | null)[]>([]);
+  const flock = useRef<Group>(null);
   useFrame((state, dt) => {
     const t = state.clock.elapsedTime;
+    // Ducks fly south for the winter.
+    if (flock.current) flock.current.visible = seasonVisual.winter < 0.3;
     ducks.forEach((d, i) => {
       const dx = d.tx - d.x;
       const dz = d.tz - d.z;
@@ -112,7 +124,8 @@ function Ducks() {
     });
   });
   return (
-    <group userData={DYNAMIC}>
+    <Plain>
+    <group ref={flock} userData={DYNAMIC}>
       {ducks.map((_, i) => (
         <group key={i} ref={(g) => void (refs.current[i] = g)} scale={0.9}>
           <StaticBatch>
@@ -126,5 +139,6 @@ function Ducks() {
         </group>
       ))}
     </group>
+    </Plain>
   );
 }

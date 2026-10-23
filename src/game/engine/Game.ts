@@ -5,8 +5,13 @@
 import { PRESTIGE_BONUS_PER_STAR, MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, machineUpgradeCost, marketPriceMult, marketUpgradeCost, starsForEarnings, statCost, truckUpgradeCost, type PlayerStatId, type WorkerStatId } from "../data/balance";
 import { ITEMS, type ItemId } from "../data/items";
 import { fieldById, machineById, machineUpgradeBase, zoneById, type PadDef } from "../data/layout";
+import { isHatId, type HatId } from "../data/hats";
+import { unlockedHats, updateAchievements } from "./achievements";
 import { inputSlot, localToWorld, outputSlot, stackSlotLocal } from "./anchors";
+import { isNight } from "./daycycle";
 import { NavGrid } from "./nav";
+import { seasonDemand, seasonOf } from "./seasons";
+import { currentWeather } from "./weather";
 import { truckDockX, truckSlot, updateDepot } from "./systems/depot";
 import { harvestAround, updateFields } from "./systems/harvest";
 import { depotSlot, updateInteractions } from "./systems/interact";
@@ -104,6 +109,21 @@ export class Game {
     const st = this.state;
     st.time += dt;
     st.stats.playTime += dt;
+    const wasNight = isNight(st.dayClock);
+    st.dayClock += dt;
+    if (isNight(st.dayClock) !== wasNight) this.emit({ type: "dayPhase", phase: wasNight ? "dawn" : "night" });
+    const season = seasonOf(st.dayClock);
+    if (season !== st.season) {
+      st.season = season;
+      st.stats.seasons++;
+      applyStats(st);
+      this.emit({ type: "season", season });
+    }
+    const weather = currentWeather(st.dayClock);
+    if (weather !== st.weather) {
+      this.emit({ type: "weather", kind: weather, from: st.weather });
+      st.weather = weather;
+    }
 
     const p = st.player;
     p.fullT += dt;
@@ -126,6 +146,7 @@ export class Game {
     this.updateFlights(dt);
     for (const pad of st.pads) if (pad.visible) pad.appearT += dt;
     updateTutorial(this);
+    updateAchievements(this, dt);
     this.updateIncome(dt);
   }
 
@@ -260,13 +281,13 @@ export class Game {
     return marketPriceMult(this.state.marketLevel) * (1 + this.state.prestige.stars * PRESTIGE_BONUS_PER_STAR);
   }
   sellValue(item: ItemId) {
-    return ITEMS[item].price * this.priceMult();
+    return ITEMS[item].price * this.priceMult() * seasonDemand(this.state.season, item);
   }
   earn(value: number, automated: boolean) {
     const st = this.state;
     st.money += value;
     st.stats.earned += value;
-    st.seasonEarned += value;
+    st.runEarned += value;
     if (automated) st.autoIncome.acc += value;
   }
 
@@ -415,22 +436,42 @@ export class Game {
 
   // ── prestige ──────────────────────────────────────────────────────────
   prestigeStars() {
-    return starsForEarnings(this.state.seasonEarned);
+    return starsForEarnings(this.state.runEarned);
   }
-  /** Start a new season: everything resets except stars, stats and seasons. */
+  /**
+   * A new generation takes over: the farm starts from scratch, but the stars
+   * (a permanent price bonus) and the statistics are inherited.
+   */
   prestige() {
     const old = this.state;
     if (!old.statue) return false;
     const next = createInitialState();
-    next.prestige = { stars: old.prestige.stars + this.prestigeStars(), seasons: old.prestige.seasons + 1 };
+    next.prestige = { stars: old.prestige.stars + this.prestigeStars(), generations: old.prestige.generations + 1 };
     next.stats = { ...old.stats };
+    next.made = { ...old.made };
+    // Trophies and the hat are the family's.
+    next.achievements = old.achievements;
+    next.hat = old.hat;
     next.tutorial = TUTORIAL_DONE;
     // Keep the counter monotonic so views always notice the swap.
     next.structure = old.structure + 1;
+    // The new generation starts on a fresh spring morning.
+    next.dayClock = 0;
     this.state = next;
     this.events = [];
     this.rebuild();
-    this.emit({ type: "toast", text: "Новый сезон начался!", icon: "⭐" });
+    this.emit({ type: "toast", text: "Новое поколение фермеров!", icon: "⭐" });
+    return true;
+  }
+
+  // ── wardrobe ──────────────────────────────────────────────────────────
+  hats(): HatId[] {
+    return unlockedHats(this.state.achievements);
+  }
+  /** Put on a hat (only one that has been earned). */
+  wearHat(id: HatId) {
+    if (!isHatId(id) || !this.hats().includes(id)) return false;
+    this.state.hat = id;
     return true;
   }
 

@@ -13,7 +13,14 @@ export type MachineTypeId =
   | "smokehouse"
   | "cannery"
   | "apiary"
-  | "honeyhouse";
+  | "honeyhouse"
+  | "sheepfold"
+  | "spinnery"
+  | "knitting"
+  | "jamhouse"
+  | "icecream"
+  | "piebakery"
+  | "lanternshop";
 
 /** [x, z] offset or [x, z, w, d] rectangle in machine-local space (machine faces +z). */
 type Off = readonly [number, number];
@@ -176,6 +183,83 @@ export const MACHINE_TYPES: Record<MachineTypeId, MachineTypeDef> = {
     output: { item: "honey", amount: 1 },
     time: 2.8,
     height: 4.2,
+    ...std(3.6, 3.2),
+  },
+  sheepfold: {
+    id: "sheepfold",
+    name: "Овчарня",
+    inputs: [{ item: "grass", amount: 1 }],
+    output: { item: "wool", amount: 1 },
+    time: 2.4,
+    height: 4.0,
+    ...std(6.2, 5.0),
+    inZone: [-2.2, 3.8, 2, 2],
+    outZone: [2.2, 3.8, 2, 2],
+  },
+  spinnery: {
+    id: "spinnery",
+    name: "Прядильня",
+    inputs: [{ item: "wool", amount: 1 }],
+    output: { item: "yarn", amount: 1 },
+    time: 2.6,
+    height: 4.4,
+    ...std(3.6, 3.2),
+  },
+  knitting: {
+    id: "knitting",
+    name: "Вязальня",
+    inputs: [{ item: "yarn", amount: 1 }],
+    output: { item: "sweater", amount: 1 },
+    time: 3.0,
+    height: 4.6,
+    ...std(3.8, 3.2),
+  },
+  jamhouse: {
+    id: "jamhouse",
+    name: "Джемоварня",
+    inputs: [{ item: "strawberry", amount: 1 }],
+    output: { item: "jam", amount: 1 },
+    time: 2.8,
+    height: 4.4,
+    ...std(3.6, 3.2),
+  },
+  icecream: {
+    id: "icecream",
+    name: "Кафе-мороженое",
+    inputs: [
+      { item: "milk", amount: 1 },
+      { item: "strawberry", amount: 1 },
+    ],
+    output: { item: "icecream", amount: 1 },
+    time: 3.2,
+    height: 5.0,
+    ...std(4.4, 3.4),
+    inZone: [-1.4, 3.0, 3.2, 2],
+    outZone: [2.4, 3.0, 2, 2],
+    upPad: [3.45, 0],
+  },
+  piebakery: {
+    id: "piebakery",
+    name: "Тыквенная пекарня",
+    inputs: [
+      { item: "pumpkin", amount: 1 },
+      { item: "flour", amount: 1 },
+    ],
+    output: { item: "pie", amount: 1 },
+    time: 3.2,
+    height: 4.6,
+    ...std(4.4, 3.4),
+    inZone: [-1.4, 3.0, 3.2, 2],
+    outZone: [2.4, 3.0, 2, 2],
+    upPad: [3.45, 0],
+  },
+  lanternshop: {
+    id: "lanternshop",
+    name: "Мастерская фонарей",
+    inputs: [{ item: "pumpkin", amount: 1 }],
+    output: { item: "lantern", amount: 1 },
+    time: 2.6,
+    height: 4.4,
     ...std(3.6, 3.2),
   },
 };

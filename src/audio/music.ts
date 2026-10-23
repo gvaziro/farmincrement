@@ -31,6 +31,10 @@ export class Music {
   private step = 0;
   private note = 5;
   private enabled = false;
+  private lp: BiquadFilterNode | null = null;
+  /** 0 = day, 1 = night: fewer, softer notes at night. */
+  private night = 0;
+  private volume = 1;
 
   attach(ctx: AudioContext) {
     this.ctx = ctx;
@@ -39,6 +43,7 @@ export class Music {
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = 3200;
+    this.lp = lp;
     this.out.connect(lp).connect(ctx.destination);
 
     // Cheap reverb: convolver with a decaying noise impulse.
@@ -60,6 +65,23 @@ export class Music {
     for (let i = 0; i < nlen; i++) nd[i] = Math.random() * 2 - 1;
   }
 
+  /** Night makes the music sparser and darker (lower filter cutoff). */
+  setMood(night: number) {
+    if (Math.abs(night - this.night) < 0.01) return;
+    this.night = night;
+    if (this.lp && this.ctx) this.lp.frequency.setTargetAtTime(3200 - night * 1700, this.ctx.currentTime, 0.5);
+  }
+
+  /** 0 … 1 */
+  setVolume(v: number) {
+    if (Math.abs(v - this.volume) < 0.001) return;
+    this.volume = v;
+    const ctx = this.ctx;
+    if (!ctx || !this.out || !this.enabled) return;
+    this.out.gain.cancelScheduledValues(ctx.currentTime);
+    this.out.gain.setTargetAtTime(0.17 * v, ctx.currentTime, 0.1);
+  }
+
   setEnabled(on: boolean) {
     this.enabled = on;
     const ctx = this.ctx;
@@ -67,7 +89,7 @@ export class Music {
     const t = ctx.currentTime;
     this.out.gain.cancelScheduledValues(t);
     this.out.gain.setValueAtTime(this.out.gain.value, t);
-    this.out.gain.linearRampToValueAtTime(on ? 0.17 : 0, t + (on ? 2.5 : 0.6));
+    this.out.gain.linearRampToValueAtTime(on ? 0.17 * this.volume : 0, t + (on ? 2.5 : 0.6));
     if (on && !this.timer) {
       this.nextTime = t + 0.1;
       this.timer = setInterval(() => this.schedule(), 100);
@@ -104,7 +126,7 @@ export class Music {
 
     // Melody: breathe every fourth bar, denser on beats.
     if (bar % 4 === 3 && inBar > 2) return;
-    const p = inBar % 2 === 0 ? 0.55 : 0.28;
+    const p = (inBar % 2 === 0 ? 0.55 : 0.28) * (1 - 0.45 * this.night);
     if (Math.random() > p) return;
     const good = CHORD_TONES[chordIdx];
     let next = this.note + Math.round((Math.random() - 0.5) * 4);

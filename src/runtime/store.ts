@@ -1,12 +1,27 @@
 import { create } from "zustand";
+import type { HatId } from "@/game/data/hats";
 import type { ItemId } from "@/game/data/items";
+import type { SeasonId } from "@/game/engine/seasons";
+import type { WeatherKind } from "@/game/engine/weather";
 
 export type Quality = "high" | "medium" | "low";
 
 export interface Settings {
   sound: boolean;
   music: boolean;
+  /** 0 … 1 */
+  soundVolume: number;
+  musicVolume: number;
+  vibration: boolean;
+  /** Camera shake on purchases (some players get queasy). */
+  shake: boolean;
+  /** Last "what's new" the player has seen. */
+  seenNews: number;
   quality: Quality;
+  /** Visual day/night cycle (the in-game clock keeps running either way). */
+  dayNight: boolean;
+  /** Visual seasons and weather (the calendar and its perks run either way). */
+  seasons: boolean;
 }
 
 export interface Toast {
@@ -33,8 +48,18 @@ export interface UIState {
   settingsOpen: boolean;
   settings: Settings;
   statue: boolean;
+  /** In-game clock for the HUD. */
+  clock: { day: number; phase: "dawn" | "day" | "sunset" | "night"; season: SeasonId; weather: WeatherKind; rainbow: boolean };
   /** Player stack fill: [carried, capacity]. */
   carry: [number, number];
+  /** The farmer's hat. */
+  hat: HatId;
+  /** Another tab owns the farm: "other" — at start, "taken" — it took over later. */
+  tabBlocked: "other" | "taken" | null;
+  /** Show the "what's new" window. */
+  news: boolean;
+  /** Number of unlocked achievements. */
+  trophies: number;
   /** Bumped on every UI sync so panels can re-read engine data. */
   tick: number;
   /** Mirrors game.state.structure — 3D components re-render on it. */
@@ -45,7 +70,19 @@ const SETTINGS_KEY = "tiny-farm-empire/settings";
 
 function loadSettings(): Settings {
   const coarse = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
-  const fallback: Settings = { sound: true, music: true, quality: coarse ? "medium" : "high" };
+  const fallback: Settings = {
+    sound: true,
+    music: true,
+    soundVolume: 1,
+    musicVolume: 1,
+    vibration: true,
+    shake: true,
+    seenNews: 0,
+    quality: coarse ? "medium" : "high",
+    dayNight: true,
+    seasons: true,
+  };
+  const unit = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
   try {
     const raw = typeof localStorage !== "undefined" ? localStorage.getItem(SETTINGS_KEY) : null;
     if (!raw) return fallback;
@@ -53,7 +90,14 @@ function loadSettings(): Settings {
     return {
       sound: s.sound ?? fallback.sound,
       music: s.music ?? fallback.music,
+      soundVolume: unit(s.soundVolume, fallback.soundVolume),
+      musicVolume: unit(s.musicVolume, fallback.musicVolume),
+      vibration: s.vibration ?? fallback.vibration,
+      shake: s.shake ?? fallback.shake,
+      seenNews: typeof s.seenNews === "number" ? s.seenNews : fallback.seenNews,
       quality: s.quality === "high" || s.quality === "medium" || s.quality === "low" ? s.quality : fallback.quality,
+      dayNight: s.dayNight ?? fallback.dayNight,
+      seasons: s.seasons ?? fallback.seasons,
     };
   } catch {
     return fallback;
@@ -73,6 +117,11 @@ export const useUI = create<UIState>(() => ({
   settings: loadSettings(),
   statue: false,
   carry: [0, 10],
+  hat: "straw",
+  trophies: 0,
+  tabBlocked: null,
+  news: false,
+  clock: { day: 1, phase: "day", season: "spring", weather: "clear", rainbow: false },
   tick: 0,
   structure: 0,
 }));
@@ -88,8 +137,26 @@ export function updateSettings(patch: Partial<Settings>) {
 }
 
 let toastId = 0;
+const TOAST_TIME = 3200;
+const MAX_TOASTS = 3;
+/** Toasts waiting for a free slot — a burst (new season + achievement) must not hide any. */
+const queue: Toast[] = [];
+
+function showToast(t: Toast) {
+  useUI.setState((s) => ({ toasts: [...s.toasts, t] }));
+  setTimeout(() => {
+    useUI.setState((s) => ({ toasts: s.toasts.filter((x) => x.id !== t.id) }));
+    const next = queue.shift();
+    if (next) showToast(next);
+  }, TOAST_TIME);
+}
+
 export function pushToast(text: string, icon: string) {
-  const id = ++toastId;
-  useUI.setState((s) => ({ toasts: [...s.toasts.slice(-2), { id, text, icon }] }));
-  setTimeout(() => useUI.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 3200);
+  const t = { id: ++toastId, text, icon };
+  if (useUI.getState().toasts.length < MAX_TOASTS) showToast(t);
+  else {
+    queue.push(t);
+    // Old news is not worth waiting for: keep the backlog short.
+    if (queue.length > 6) queue.shift();
+  }
 }

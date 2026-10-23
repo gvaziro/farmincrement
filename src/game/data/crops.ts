@@ -1,6 +1,6 @@
 import type { ItemId } from "./items";
 
-export type CropId = "wheat" | "corn" | "grass" | "tomato" | "apple" | "flowers" | "fish";
+export type CropId = "wheat" | "corn" | "grass" | "tomato" | "apple" | "flowers" | "fish" | "strawberry" | "pumpkin";
 
 export interface CropDef {
   id: CropId;
@@ -31,6 +31,8 @@ export const CROPS: Record<CropId, CropDef> = {
   apple: { id: "apple", name: "Яблони", item: "apple", growTime: 3, kind: "tree", fruits: 3, spacing: 2.4, soil: "#6cbf4e" },
   flowers: { id: "flowers", name: "Цветы", item: "flower", growTime: 4, kind: "plant", spacing: 1.0, soil: "#6fbf52" },
   fish: { id: "fish", name: "Рыба", item: "fish", growTime: 4, kind: "water", fruits: 2, spacing: 1.9, soil: "#4fb4e0" },
+  strawberry: { id: "strawberry", name: "Клубника", item: "strawberry", growTime: 5, kind: "plant", spacing: 1.0, soil: "#9c6438" },
+  pumpkin: { id: "pumpkin", name: "Тыквы", item: "pumpkin", growTime: 7, kind: "plant", spacing: 1.3, soil: "#8a5a30" },
 };
 
 /** Extra catch radius for fishing spots: you fish from the shore, not in the water. */

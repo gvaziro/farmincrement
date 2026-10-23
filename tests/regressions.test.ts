@@ -107,3 +107,52 @@ describe("soft-locks", () => {
     expect(p.stack.length).toBe(0);
   });
 });
+
+describe("review of the seasons update", () => {
+  /** Clock on day N (1-based) at time of day t. */
+  const clockOn = (day: number, t: number) => (day - 1 + t - 0.14) * 600;
+
+  it("an unfinished fair leaves the board when its season ends", () => {
+    const g = unlocked("field_wheat_2", "build_bakery");
+    // Winter of year 1 is days 7–8; its fair starts on day 8.
+    g.state.dayClock = clockOn(8, 0.5);
+    run(g, 0.5);
+    expect(g.state.order?.fair).toBe(true);
+    // Spring comes: the bread fair is out of season and must not block anything.
+    g.state.dayClock = clockOn(9, 0.2);
+    const events: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      g.tick(0.1);
+      for (const e of g.drainEvents()) if (e.type === "order") events.push(e.state);
+    }
+    expect(events).toContain("expired");
+    expect(g.state.order?.fair).toBeFalsy();
+    run(g, 6);
+    expect(g.state.order).not.toBeNull();
+  });
+
+  it("goods made are counted in the save and across generations", () => {
+    const g = unlocked();
+    const mill = g.machine("mill")!;
+    mill.inputs.wheat = 6;
+    run(g, 10);
+    const n = g.state.made.flour ?? 0;
+    expect(n).toBeGreaterThan(3);
+    const g2 = roundTrip(g);
+    expect(g2.state.made.flour).toBe(n);
+    g2.state.statue = true;
+    g2.state.runEarned = 400_000;
+    g2.prestige();
+    expect(g2.state.made.flour).toBe(n);
+  });
+
+  it("a save just before midnight does not slip into the next season", () => {
+    const g = new Game();
+    // 4 ms before summer begins.
+    g.state.dayClock = (2 - 0.14) * 600 - 0.004;
+    g.tick(0);
+    expect(g.state.season).toBe("spring");
+    const g2 = roundTrip(g);
+    expect(g2.state.season).toBe("spring");
+  });
+});

@@ -7,7 +7,7 @@ import { mulberry32 } from "@/game/core/math";
 import type { ItemId } from "@/game/data/items";
 import { fitFont, gameFont, getFontsVersion, outlinedText, roundRect } from "../canvasText";
 import { itemIconImage, useItemIconsVersion } from "../itemIcons";
-import { G, Part, mat } from "../kit";
+import { G, Part, Plain, mat } from "../kit";
 import { DYNAMIC, StaticBatch } from "../StaticBatch";
 
 // ── canvas decals ───────────────────────────────────────────────────────
@@ -244,6 +244,7 @@ function useWanderers(count: number, bounds: { minX: number; maxX: number; minZ:
 export function Chickens({ count, bounds, seed }: { count: number; bounds: { minX: number; maxX: number; minZ: number; maxZ: number }; seed: number }) {
   const { list, refs, heads } = useWanderers(count, bounds, seed, 0.9);
   return (
+    <Plain>
     <group userData={DYNAMIC}>
       {list.map((_, i) => (
         <group key={i} ref={(g) => void (refs.current[i] = g)} scale={0.9}>
@@ -264,12 +265,14 @@ export function Chickens({ count, bounds, seed }: { count: number; bounds: { min
         </group>
       ))}
     </group>
+    </Plain>
   );
 }
 
 export function Cows({ count, bounds, seed }: { count: number; bounds: { minX: number; maxX: number; minZ: number; maxZ: number }; seed: number }) {
   const { list, refs, heads } = useWanderers(count, bounds, seed, 0.5);
   return (
+    <Plain>
     <group userData={DYNAMIC}>
       {list.map((_, i) => (
         <group key={i} ref={(g) => void (refs.current[i] = g)}>
@@ -303,6 +306,46 @@ export function Cows({ count, bounds, seed }: { count: number; bounds: { minX: n
         </group>
       ))}
     </group>
+    </Plain>
+  );
+}
+
+/** Fluffy sheep: a cloud of wool on dark legs, with a dark face. */
+export function Sheep({ count, bounds, seed }: { count: number; bounds: { minX: number; maxX: number; minZ: number; maxZ: number }; seed: number }) {
+  const { list, refs, heads } = useWanderers(count, bounds, seed, 0.45);
+  return (
+    <Plain>
+    <group userData={DYNAMIC}>
+      {list.map((_, i) => (
+        <group key={i} ref={(g) => void (refs.current[i] = g)} scale={i % 3 === 2 ? 0.8 : 1}>
+          <StaticBatch>
+            <Part g={G.ico(0.32, 1)} c="#fbf8f0" position={[0, 0.55, 0]} scale={[1, 0.85, 1.25]} />
+            <Part g={G.ico(0.2, 1)} c="#ffffff" position={[0.16, 0.72, 0.16]} />
+            <Part g={G.ico(0.2, 1)} c="#f1ecdf" position={[-0.16, 0.7, -0.14]} />
+            <Part g={G.ico(0.18, 1)} c="#ffffff" position={[0.02, 0.77, -0.3]} />
+            {[
+              [-0.14, -0.2],
+              [0.14, -0.2],
+              [-0.14, 0.2],
+              [0.14, 0.2],
+            ].map(([x, z], k) => (
+              <Part key={k} g={G.box(0.08, 0.34, 0.08)} c="#3a3a3a" position={[x, 0.17, z]} />
+            ))}
+          </StaticBatch>
+          <group ref={(g) => void (heads.current[i] = g)} position={[0, 0.62, 0.38]}>
+            <StaticBatch>
+              <Part g={G.box(0.2, 0.24, 0.26)} c="#3a3a3a" position={[0, 0, 0.08]} />
+              <Part g={G.box(0.14, 0.05, 0.07)} c="#3a3a3a" position={[-0.15, 0.06, 0.02]} rotation={[0, 0, 0.4]} />
+              <Part g={G.box(0.14, 0.05, 0.07)} c="#3a3a3a" position={[0.15, 0.06, 0.02]} rotation={[0, 0, -0.4]} />
+              <Part g={G.ico(0.12, 1)} c="#ffffff" position={[0, 0.13, 0.02]} />
+              <Part g={G.sphere(0.028, 4, 3)} c="#ffffff" position={[-0.06, 0.04, 0.21]} />
+              <Part g={G.sphere(0.028, 4, 3)} c="#ffffff" position={[0.06, 0.04, 0.21]} />
+            </StaticBatch>
+          </group>
+        </group>
+      ))}
+    </group>
+    </Plain>
   );
 }
 

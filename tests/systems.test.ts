@@ -88,16 +88,16 @@ describe("meta", () => {
     expect(offlineEarnings(5, -50).money).toBe(0);
   });
 
-  it("new season keeps stars and stats, resets the farm", () => {
+  it("a new generation keeps stars and stats, resets the farm", () => {
     const g = unlocked("field_wheat_2", "build_bakery");
     g.state.statue = true;
-    g.state.seasonEarned = 900_000; // → 3 stars
+    g.state.runEarned = 900_000; // → 3 stars
     g.state.stats.earned = 1_234_567;
     expect(g.prestigeStars()).toBe(3);
     expect(g.prestige()).toBe(true);
     const st = g.state;
     expect(st.prestige.stars).toBe(3);
-    expect(st.prestige.seasons).toBe(1);
+    expect(st.prestige.generations).toBe(1);
     expect(st.stats.earned).toBe(1_234_567);
     expect(st.machines.map((m) => m.id)).toEqual(["mill"]);
     expect(st.money).toBe(0);

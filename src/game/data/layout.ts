@@ -3,7 +3,8 @@
  * the set of completed pads — so a save only needs pad progress and levels.
  *
  * Coordinates: x → east (right on screen), z → south (towards the camera).
- * The map is a 3×3 grid of land plots, each ZONE_W × ZONE_D metres.
+ * The map is a grid of land plots, 3 wide and 4 deep (the northern row came
+ * with the seasons update), each ZONE_W × ZONE_D metres.
  */
 import { CROPS, type CropId } from "./crops";
 import { MACHINE_TYPES, type MachineTypeId } from "./machines";
@@ -11,7 +12,7 @@ import { MACHINE_TYPES, type MachineTypeId } from "./machines";
 export const ZONE_W = 26;
 export const ZONE_D = 22;
 
-export type ZoneId = "farm" | "coop" | "pasture" | "depot" | "orchard" | "garden" | "sweets" | "pond" | "apiary";
+export type ZoneId = "farm" | "coop" | "pasture" | "depot" | "orchard" | "garden" | "sweets" | "pond" | "apiary" | "sheep" | "berries" | "pumpkins";
 
 export interface ZoneDef {
   id: ZoneId;
@@ -37,6 +38,10 @@ export const ZONES: ZoneDef[] = [
   { id: "sweets", name: "Кондитерская", icon: "🎂", gx: 1, gz: -1, includes: ["wheat_4"], tint: "#88d460" },
   { id: "pond", name: "Пруд", icon: "🎣", gx: -1, gz: 1, includes: ["fish_1"], tint: "#7dce5c" },
   { id: "apiary", name: "Пасека", icon: "🐝", gx: -1, gz: -1, includes: ["flowers_1"], tint: "#8ad662", wild: "forest" },
+  // The northern row.
+  { id: "sheep", name: "Овчарня", icon: "🐑", gx: -1, gz: -2, includes: ["grass_3"], tint: "#84d15e", wild: "forest" },
+  { id: "berries", name: "Ягодник", icon: "🍓", gx: 0, gz: -2, includes: ["berries_1"], tint: "#80cf5b" },
+  { id: "pumpkins", name: "Тыквенное поле", icon: "🎃", gx: 1, gz: -2, includes: ["pumpkins_1"], tint: "#86d25f" },
 ];
 
 export const zoneById = (id: ZoneId) => ZONES.find((z) => z.id === id)!;
@@ -48,12 +53,12 @@ export const zoneRect = (z: { gx: number; gz: number }) => ({
   hd: ZONE_D / 2,
 });
 
-/** Map extents: the 3×3 grid of plots. */
+/** Map extents: the grid of plots. */
 export const MAP_BOUNDS = {
-  minX: -1.5 * ZONE_W,
-  maxX: 1.5 * ZONE_W,
-  minZ: -1.5 * ZONE_D,
-  maxZ: 1.5 * ZONE_D,
+  minX: (Math.min(...ZONES.map((z) => z.gx)) - 0.5) * ZONE_W,
+  maxX: (Math.max(...ZONES.map((z) => z.gx)) + 0.5) * ZONE_W,
+  minZ: (Math.min(...ZONES.map((z) => z.gz)) - 0.5) * ZONE_D,
+  maxZ: (Math.max(...ZONES.map((z) => z.gz)) + 0.5) * ZONE_D,
 };
 
 // ── fields ──────────────────────────────────────────────────────────────
@@ -101,6 +106,15 @@ export const FIELDS: FieldDef[] = [
   // Apiary: flower meadows in the forest clearing.
   { id: "flowers_1", crop: "flowers", zone: "apiary", x: -19.5, z: -17, cols: 5, rows: 4 },
   { id: "flowers_2", crop: "flowers", zone: "apiary", x: -19.5, z: -24, cols: 5, rows: 4 },
+  // Sheep farm: meadows east of the pens.
+  { id: "grass_3", crop: "grass", zone: "sheep", x: -19.5, z: -38.6, cols: 5, rows: 5 },
+  { id: "grass_4", crop: "grass", zone: "sheep", x: -19.5, z: -47.4, cols: 5, rows: 5 },
+  // Berry garden: strawberry beds on the west half.
+  { id: "berries_1", crop: "strawberry", zone: "berries", x: -6.5, z: -38.4, cols: 5, rows: 4 },
+  { id: "berries_2", crop: "strawberry", zone: "berries", x: -6.5, z: -46.6, cols: 5, rows: 4 },
+  // Pumpkin field: big pumpkins, wider spacing.
+  { id: "pumpkins_1", crop: "pumpkin", zone: "pumpkins", x: 19.5, z: -38.6, cols: 4, rows: 4 },
+  { id: "pumpkins_2", crop: "pumpkin", zone: "pumpkins", x: 19.5, z: -47.6, cols: 4, rows: 4 },
 ];
 
 /** The pond: water you cannot walk on, with a walkable pier from the east shore. */
@@ -146,6 +160,13 @@ export const MACHINES: MachineDef[] = [
   { id: "cannery", type: "cannery", zone: "pond", x: -19.5, z: 25.5, cost: 400000 },
   { id: "hives", type: "apiary", zone: "apiary", x: -29.5, z: -16.5, cost: 850000 },
   { id: "honeyhouse", type: "honeyhouse", zone: "apiary", x: -29.5, z: -26, cost: 1350000 },
+  { id: "sheepfold", type: "sheepfold", zone: "sheep", x: -30.5, z: -38.2, cost: 2_000_000 },
+  { id: "spinnery", type: "spinnery", zone: "sheep", x: -30.5, z: -45.6, cost: 3_000_000 },
+  { id: "knitting", type: "knitting", zone: "sheep", x: -30.5, z: -52.4, cost: 4_000_000 },
+  { id: "jamhouse", type: "jamhouse", zone: "berries", x: 4.5, z: -38.6, cost: 5_000_000 },
+  { id: "icecream", type: "icecream", zone: "berries", x: 5.0, z: -48.4, cost: 9_000_000 },
+  { id: "piebakery", type: "piebakery", zone: "pumpkins", x: 30.5, z: -38.8, cost: 20_000_000 },
+  { id: "lanternshop", type: "lanternshop", zone: "pumpkins", x: 30.5, z: -47.6, cost: 30_000_000 },
 ];
 
 export const machineById = (id: string) => MACHINES.find((m) => m.id === id)!;
@@ -172,6 +193,29 @@ export const STATUE = { x: 33.5, z: -16.2, w: 3, d: 3 };
 export const TRASH = { x: -4.6, z: -8.5, w: 1.7, d: 1.5 };
 
 export const PLAYER_SPAWN = { x: -2.6, z: 1.4 };
+
+/** Lamp posts (decor): they light up at night. Kept clear of all gameplay areas. */
+export const LAMPS: readonly { x: number; z: number }[] = [
+  { x: 5.3, z: 8.7 },
+  { x: 10.6, z: 8.5 },
+  { x: -6.1, z: -4.4 },
+  { x: 3.0, z: -7.3 },
+  { x: 2.0, z: 1.4 },
+  { x: 0.6, z: -14.2 },
+  { x: 24.6, z: 1.2 },
+  { x: 19.5, z: 22.8 },
+  { x: 0.4, z: 13.8 },
+  { x: -24.4, z: -0.6 },
+  { x: 33.0, z: -19.4 },
+  { x: -24.2, z: 24.2 },
+  { x: -24.6, z: -12.6 },
+  { x: -24.4, z: -34.2 },
+  { x: -36.6, z: -48.8 },
+  { x: 0.4, z: -44.2 },
+  { x: 11.2, z: -41.8 },
+  { x: 25.2, z: -39.4 },
+  { x: 36.8, z: -43.2 },
+];
 
 // ── workers ─────────────────────────────────────────────────────────────
 export type WorkerTarget =
@@ -262,7 +306,7 @@ function fieldPad(id: string, cost: number, requires: string[]) {
     requires,
     effect: { type: "field", id },
     label: f.crop === "apple" ? "Сад" : f.crop === "fish" ? "Рыбное место" : f.crop === "flowers" ? "Цветник" : "Грядка",
-    icon: { wheat: "🌾", corn: "🌽", grass: "🌿", tomato: "🍅", apple: "🌳", flowers: "🌸", fish: "🎣" }[f.crop],
+    icon: { wheat: "🌾", corn: "🌽", grass: "🌿", tomato: "🍅", apple: "🌳", flowers: "🌸", fish: "🎣", strawberry: "🍓", pumpkin: "🎃" }[f.crop],
   });
 }
 
@@ -432,6 +476,47 @@ fieldPad("flowers_2", 1_300_000, ["hire_h_flower_1"]);
 hirePad("h_flower_2", "apiary", -23.6, -20.5, 2_200_000, ["hire_h_flower_1", "field_flowers_2"], "Сборщик 2", harvester(["flowers_1", "flowers_2"], "hives"));
 operatorPad("hives", 2_000_000, ["hire_c_honey_market"]);
 operatorPad("honeyhouse", 2_700_000, ["hire_op_hives"]);
+zonePad("sheep", "apiary", -25.5, -31.3, 4_500_000, ["hire_c_honey_market"]);
+
+// ── Овчарня ─────────────────────────────────────────────────────────────
+machinePad("sheepfold", ["zone_sheep"]);
+machinePad("spinnery", ["build_sheepfold"]);
+hirePad("h_grass_3", "sheep", -23.4, -43.0, 2_500_000, ["build_spinnery"], "Сборщик", harvester(["grass_3", "grass_4"], "sheepfold"));
+machinePad("knitting", ["hire_h_grass_3"]);
+hirePad("c_fold_spin", "sheep", -26.0, -41.2, 3_500_000, ["build_knitting"], "Грузчик", carrier("sheepfold", toMachine("spinnery")));
+hirePad("c_spin_knit", "sheep", -26.0, -48.6, 4_500_000, ["hire_c_fold_spin"], "Грузчик", carrier("spinnery", toMachine("knitting")));
+hirePad("c_knit_market", "sheep", -23.4, -52.6, 5_500_000, ["hire_c_spin_knit"], "Грузчик", carrier("knitting", MARKET_T));
+fieldPad("grass_4", 3_000_000, ["hire_h_grass_3"]);
+hirePad("h_grass_4", "sheep", -23.4, -43.0, 5_000_000, ["hire_h_grass_3", "field_grass_4"], "Сборщик 2", harvester(["grass_3", "grass_4"], "sheepfold"));
+operatorPad("sheepfold", 6_000_000, ["hire_c_knit_market"]);
+operatorPad("spinnery", 7_000_000, ["hire_op_sheepfold"]);
+operatorPad("knitting", 8_500_000, ["hire_op_spinnery"]);
+zonePad("berries", "sheep", -15.0, -42.8, 10_000_000, ["hire_c_knit_market"]);
+
+// ── Ягодник ─────────────────────────────────────────────────────────────
+machinePad("jamhouse", ["zone_berries"]);
+hirePad("h_berry_1", "berries", -2.2, -42.6, 6_000_000, ["build_jamhouse"], "Сборщик", harvester(["berries_1", "berries_2"], "jamhouse"));
+hirePad("c_jam_market", "berries", 9.4, -35.2, 7_000_000, ["hire_h_berry_1"], "Грузчик", carrier("jamhouse", MARKET_T));
+fieldPad("berries_2", 6_500_000, ["hire_h_berry_1"]);
+machinePad("icecream", ["hire_c_jam_market"]);
+hirePad("h_berry_2", "berries", -2.2, -50.6, 9_000_000, ["build_icecream", "field_berries_2"], "Сборщик 2", harvester(["berries_1", "berries_2"], "icecream"));
+hirePad("c_barn_ice", "berries", 11.4, -46.2, 10_000_000, ["hire_h_berry_2"], "Грузчик", carrier("barn", toMachine("icecream")));
+hirePad("c_ice_market", "berries", 11.4, -50.6, 12_000_000, ["hire_c_barn_ice"], "Грузчик", carrier("icecream", MARKET_T));
+operatorPad("jamhouse", 13_000_000, ["hire_c_ice_market"]);
+operatorPad("icecream", 16_000_000, ["hire_op_jamhouse"]);
+zonePad("pumpkins", "berries", 11.6, -38.6, 30_000_000, ["hire_c_ice_market"]);
+
+// ── Тыквенное поле ──────────────────────────────────────────────────────
+machinePad("piebakery", ["zone_pumpkins"]);
+hirePad("h_pumpkin_1", "pumpkins", 24.6, -43.2, 18_000_000, ["build_piebakery"], "Сборщик", harvester(["pumpkins_1", "pumpkins_2"], "piebakery"));
+hirePad("c_mill2_pie", "pumpkins", 25.4, -35.2, 22_000_000, ["hire_h_pumpkin_1"], "Грузчик", carrier("mill_2", toMachine("piebakery")));
+hirePad("c_pie_depot", "pumpkins", 36.6, -35.4, 26_000_000, ["hire_c_mill2_pie"], "Грузчик", carrier("piebakery", DEPOT_T));
+fieldPad("pumpkins_2", 20_000_000, ["hire_h_pumpkin_1"]);
+machinePad("lanternshop", ["hire_c_pie_depot"]);
+hirePad("h_pumpkin_2", "pumpkins", 24.6, -51.6, 32_000_000, ["build_lanternshop", "field_pumpkins_2"], "Сборщик 2", harvester(["pumpkins_1", "pumpkins_2"], "lanternshop"));
+hirePad("c_lantern_market", "pumpkins", 36.6, -50.4, 38_000_000, ["hire_h_pumpkin_2"], "Грузчик", carrier("lanternshop", MARKET_T));
+operatorPad("piebakery", 42_000_000, ["hire_c_lantern_market"]);
+operatorPad("lanternshop", 50_000_000, ["hire_op_piebakery"]);
 
 addPad({
   id: "statue",
@@ -440,8 +525,8 @@ addPad({
   x: STATUE.x,
   z: STATUE.z,
   size: 2.8,
-  cost: 6_000_000,
-  requires: ["hire_c_honey_market"],
+  cost: 150_000_000,
+  requires: ["hire_c_lantern_market"],
   effect: { type: "statue" },
   label: "Золотая статуя",
   icon: "🏆",

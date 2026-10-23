@@ -1,4 +1,7 @@
 import { WATER_REACH, fruitSlotWorld, type CropDef, type CropId } from "../../data/crops";
+import { NIGHT_FISHING_BOOST, isNight } from "../daycycle";
+import { AUTUMN_BONUS_EVERY, seasonGrowth } from "../seasons";
+import { weatherGrowth } from "../weather";
 import type { Game } from "../Game";
 import type { Actor, Plant } from "../types";
 
@@ -15,16 +18,21 @@ const reachBonus = (crop: CropDef) => (crop.kind === "tree" ? TREE_RADIUS : crop
 
 /** Grow plants and fruits. */
 export function updateFields(game: Game, dt: number) {
-  for (const f of game.state.fields) {
+  const st = game.state;
+  const night = isNight(st.dayClock);
+  const raining = st.weather === "rain";
+  for (const f of st.fields) {
     f.spawnT += dt;
     const grow = f.crop.growTime;
     const fruit = bearsFruit(f.crop);
     const maxFruits = f.crop.fruits ?? 0;
+    // Fish bite better at night; spring and rain make plants grow faster.
+    const boost = (night && f.crop.kind === "water" ? NIGHT_FISHING_BOOST : 1) * seasonGrowth(st.season, f.crop) * weatherGrowth(raining, f.crop);
     for (const p of f.plants) {
       p.pop += dt;
       if (fruit) {
         if (p.fruits < maxFruits) {
-          p.timer += dt;
+          p.timer += dt * boost;
           if (p.timer >= grow * (0.85 + p.seed * 0.3)) {
             p.timer = 0;
             p.fruits++;
@@ -32,7 +40,7 @@ export function updateFields(game: Game, dt: number) {
           }
         }
       } else if (p.growth < 1) {
-        p.growth += dt / (grow * (0.85 + p.seed * 0.3));
+        p.growth += (dt * boost) / (grow * (0.85 + p.seed * 0.3));
         if (p.growth >= 1) {
           p.growth = 1;
           p.pop = 0;
@@ -74,6 +82,7 @@ export function harvestAround(game: Game, a: Actor & { reach: number }, crops: R
         while (p.fruits > 0 && a.stack.length < a.capacity) {
           p.fruits--;
           p.timer = 0;
+          if (water && isNight(st.dayClock)) st.stats.nightFish++;
           if (water) {
             // A fish leaps out of the water towards the stack.
             game.giveToActor(a, item, p.x, 0.1, p.z, 0.5);
@@ -89,7 +98,14 @@ export function harvestAround(game: Game, a: Actor & { reach: number }, crops: R
         game.giveToActor(a, item, p.x, 0.45, p.z);
       }
       st.stats.harvested++;
+      if (st.weather === "rain") st.stats.rainHarvest++;
       game.emit({ type: "harvest", item, x: p.x, z: p.z, player: isPlayer });
+      // Autumn: every few harvests bring one more.
+      if (st.season === "autumn" && st.stats.harvested % AUTUMN_BONUS_EVERY === 0 && a.stack.length < a.capacity) {
+        game.giveToActor(a, item, p.x, 0.6, p.z, 0.42);
+        st.stats.bonusHarvest++;
+        game.emit({ type: "bonusHarvest", item, x: p.x, z: p.z, player: isPlayer });
+      }
     }
   }
 }

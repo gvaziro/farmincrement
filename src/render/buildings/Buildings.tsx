@@ -16,6 +16,7 @@ import { G, Part, mat } from "../kit";
 import { MACHINE_MODELS } from "./machines";
 import { OrderBoard } from "./OrderBoard";
 import { Decal, Pallet, Sign } from "./parts";
+import { windowMat } from "../nightMaterials";
 import { Plaza } from "../shapes";
 import { DYNAMIC, StaticBatch } from "../StaticBatch";
 
@@ -56,7 +57,7 @@ function MachineView({ m }: { m: Machine }) {
   const lot = useMemo(() => {
     const t = m.type;
     const [w, d] = t.size;
-    const penned = t.id === "coop" || t.id === "barn";
+    const penned = t.id === "coop" || t.id === "barn" || t.id === "sheepfold";
     const minX = Math.min(-w / 2, t.inZone[0] - t.inZone[2] / 2) - 0.45;
     const maxX = Math.max(w / 2, t.outZone[0] + t.outZone[2] / 2) + 0.45;
     const minZ = penned ? d / 2 - 0.1 : -d / 2 - 0.45;
@@ -124,9 +125,9 @@ function Market({ runtime }: { runtime: Runtime }) {
           <Part key={`f${i}`} g={G.cone(w / stripes / 2 + 0.02, 0.28, 3)} c={i % 2 ? "#ffffff" : "#e8413c"} position={[-w / 2 + (w / stripes) * (i + 0.5), 2.4, 1.33]} rotation={[Math.PI, 0, 0]} />
         ))}
         {/* order board on two posts above the awning */}
-        <Part g={G.box(0.1, 1.5, 0.1)} c="#8a5a33" position={[-1.5, 3.0, -0.15]} />
-        <Part g={G.box(0.1, 1.5, 0.1)} c="#8a5a33" position={[1.5, 3.0, -0.15]} />
-        <group position={[0, 3.75, 0]} rotation={[-0.32, 0, 0]} userData={DYNAMIC}>
+        <Part g={G.box(0.1, 1.9, 0.1)} c="#8a5a33" position={[-1.5, 3.2, -0.15]} />
+        <Part g={G.box(0.1, 1.9, 0.1)} c="#8a5a33" position={[1.5, 3.2, -0.15]} />
+        <group position={[0, 3.98, 0]} rotation={[-0.32, 0, 0]} userData={DYNAMIC}>
           <OrderBoard runtime={runtime} />
         </group>
         {/* produce crates on the counter */}
@@ -190,7 +191,7 @@ function Farmhouse() {
         <Part g={G.prism(3.9, 1.42, 0.04)} c="#f5e6c8" position={[0, 2.33, 1.77]} />
         {/* round attic window in the gable */}
         <Part g={G.cyl(0.32, 0.32, 0.06, 10)} c="#ffffff" position={[0, 2.85, 1.8]} rotation={[Math.PI / 2, 0, 0]} />
-        <Part g={G.cyl(0.24, 0.24, 0.08, 10)} c="#8fd3f5" position={[0, 2.85, 1.81]} rotation={[Math.PI / 2, 0, 0]} />
+        <Part g={G.cyl(0.24, 0.24, 0.08, 10)} c="#8fd3f5" m={windowMat} position={[0, 2.85, 1.81]} rotation={[Math.PI / 2, 0, 0]} />
         <Part g={G.box(0.5, 1.6, 0.5)} c="#b35a3a" position={[1.25, 3.3, -0.5]} />
         <Part g={G.box(0.62, 0.14, 0.62)} c="#8f4530" position={[1.25, 4.12, -0.5]} />
         <Part g={G.box(0.82, 1.32, 0.1)} c="#ffffff" position={[0, 0.96, 1.52]} />
@@ -199,7 +200,7 @@ function Farmhouse() {
         {[-1.3, 1.3].map((x) => (
           <group key={x} position={[x, 1.35, 1.52]}>
             <Part g={G.box(0.8, 0.7, 0.06)} c="#ffffff" />
-            <Part g={G.box(0.68, 0.58, 0.08)} c="#8fd3f5" />
+            <Part g={G.box(0.68, 0.58, 0.08)} c="#8fd3f5" m={windowMat} />
             <Part g={G.box(0.05, 0.58, 0.09)} c="#ffffff" />
             <Part g={G.box(0.25, 0.75, 0.07)} c="#5fae45" position={[-0.55, 0, 0]} />
             <Part g={G.box(0.25, 0.75, 0.07)} c="#5fae45" position={[0.55, 0, 0]} />
