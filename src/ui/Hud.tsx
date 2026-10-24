@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { formatDuration, formatMoney } from "@/game/core/format";
 import { ITEMS, type ItemId } from "@/game/data/items";
+import { RUSH_MULT, WHISTLE_COOLDOWN, WHISTLE_MULT, WHISTLE_TIME } from "@/game/data/surprises";
 import { dayNumber } from "@/game/engine/daycycle";
 import { DAYS_PER_SEASON, SEASONS, nextSeason, seasonDay, seasonTimeLeft, yearNumber } from "@/game/engine/seasons";
 import { WEATHER_NAMES, weatherOfDay, weatherStartsIn } from "@/game/engine/weather";
 import { itemIconUrl, useItemIconsVersion } from "@/render/itemIcons";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI } from "@/runtime/store";
+import { EDGE_ARROW_KINDS, edgeArrowEls } from "./edgeArrows";
 import { FarmhousePanel } from "./FarmhousePanel";
 import { TabBlockedModal, WhatsNewModal } from "./Notices";
 import { SettingsModal } from "./SettingsModal";
@@ -16,8 +18,10 @@ import { SettingsModal } from "./SettingsModal";
 export function Hud({ runtime }: { runtime: Runtime }) {
   return (
     <div className="hud">
+      <EdgeArrows />
       <TopBar runtime={runtime} />
       <Hint />
+      <WhistleButton runtime={runtime} />
       <Toasts />
       <ControlsHint runtime={runtime} />
       <FarmhousePanel runtime={runtime} />
@@ -32,6 +36,7 @@ export function Hud({ runtime }: { runtime: Runtime }) {
 function TopBar({ runtime }: { runtime: Runtime }) {
   const money = useUI((s) => s.money);
   const stars = useUI((s) => s.stars);
+  const rush = useUI((s) => s.surprise.rush);
   const [shown, setShown] = useState(money);
   const [bump, setBump] = useState(0);
   const prev = useRef(money);
@@ -57,9 +62,15 @@ function TopBar({ runtime }: { runtime: Runtime }) {
 
   return (
     <div className="topbar">
-      <div key={bump} className="money money--bump">
+      <div key={bump} className={`money money--bump ${rush > 0 ? "money--rush" : ""}`}>
         <span className="money__coin">$</span>
         <span className="money__value">{formatMoney(shown)}</span>
+        {/* Gold rush: a sticker on the money pill (the top row has no room for more on a phone). */}
+        {rush > 0 && (
+          <span className="money__rush" title="Золотая лихорадка: все продажи приносят вдвое больше">
+            ✨×{RUSH_MULT} {clockText(rush)}
+          </span>
+        )}
       </div>
       <Carry />
       <DayClock runtime={runtime} />
@@ -77,6 +88,57 @@ function TopBar({ runtime }: { runtime: Runtime }) {
 
 const PHASE_ICON = { dawn: "🌅", day: "☀️", sunset: "🌇", night: "🌙" } as const;
 const PHASE_NAME = { dawn: "Рассвет", day: "День", sunset: "Закат", night: "Ночь" } as const;
+
+/** m:ss */
+const clockText = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+/** The foreman's whistle (also on Space): workers run faster for a while, then it needs a rest. */
+function WhistleButton({ runtime }: { runtime: Runtime }) {
+  const { whistle, whistleCd, workers } = useUI((s) => s.surprise);
+  const panel = useUI((s) => s.panel);
+  if (!workers || panel) return null;
+  const active = whistle > 0;
+  const ready = whistleCd <= 0;
+  const p = ready ? 1 : 1 - whistleCd / WHISTLE_COOLDOWN;
+  return (
+    <button
+      className={`whistle ${active ? "whistle--active" : ready ? "whistle--ready" : ""}`}
+      style={{ "--p": p } as CSSProperties}
+      disabled={!ready}
+      title={`Свисток бригадира: работники ${WHISTLE_TIME} секунд бегают в ${WHISTLE_MULT} раза быстрее (пробел)`}
+      aria-label="Свисток бригадира"
+      onClick={() => runtime.game.whistle()}
+    >
+      <span className="whistle__face">
+        <span className="whistle__icon">📯</span>
+        <span className="whistle__label">{active ? `${whistle} с` : ready ? "Свисток" : clockText(whistleCd)}</span>
+      </span>
+    </button>
+  );
+}
+
+/** Arrows at the screen edge towards off-screen surprises (the 3D scene moves them). */
+function EdgeArrows() {
+  return (
+    <div className="edge-arrows" aria-hidden>
+      {EDGE_ARROW_KINDS.map((kind) => (
+        <div
+          key={kind}
+          className={`edge-arrow edge-arrow--${kind}`}
+          ref={(el) => {
+            if (!el) return;
+            edgeArrowEls.set(kind, el);
+            return () => void edgeArrowEls.delete(kind);
+          }}
+        >
+          <span className="edge-arrow__tip" />
+          <span className="edge-arrow__icon" />
+          <span className="edge-arrow__dist" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Season and time of day, top-left. Tap for the season card. */
 function DayClock({ runtime }: { runtime: Runtime }) {

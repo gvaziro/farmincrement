@@ -241,110 +241,140 @@ function useWanderers(count: number, bounds: { minX: number; maxX: number; minZ:
   return { list, refs, heads };
 }
 
-export function Chickens({ count, bounds, seed }: { count: number; bounds: { minX: number; maxX: number; minZ: number; maxZ: number }; seed: number }) {
+type HeadRef = (g: Group | null) => void;
+
+/** One chicken; the head is its own group so it can peck. */
+export function ChickenModel({ brown = false, headRef }: { brown?: boolean; headRef?: HeadRef }) {
+  return (
+    <>
+      <StaticBatch>
+        <Part g={G.sphere(0.2, 8, 6)} c={brown ? "#c98b52" : "#ffffff"} position={[0, 0.27, 0]} scale={[0.9, 0.85, 1.15]} />
+        <Part g={G.cone(0.1, 0.22, 5)} c={brown ? "#a8642a" : "#f2f2f2"} position={[0, 0.38, -0.2]} rotation={[-0.9, 0, 0]} />
+        <Part g={G.cyl(0.015, 0.015, 0.14, 4)} c="#f29e4c" position={[-0.06, 0.07, 0]} />
+        <Part g={G.cyl(0.015, 0.015, 0.14, 4)} c="#f29e4c" position={[0.06, 0.07, 0]} />
+      </StaticBatch>
+      <group ref={headRef} position={[0, 0.38, 0.16]}>
+        <StaticBatch>
+          <Part g={G.sphere(0.11, 7, 5)} c={brown ? "#c98b52" : "#ffffff"} position={[0, 0.08, 0.04]} />
+          <Part g={G.box(0.04, 0.08, 0.1)} c="#e8413c" position={[0, 0.2, 0.03]} />
+          <Part g={G.cone(0.04, 0.09, 4)} c="#f29e4c" position={[0, 0.07, 0.17]} rotation={[Math.PI / 2, 0, 0]} />
+          <Part g={G.sphere(0.025, 4, 3)} c="#e8413c" position={[0, 0.0, 0.12]} />
+        </StaticBatch>
+      </group>
+    </>
+  );
+}
+
+/** One spotted cow. */
+export function CowModel({ headRef }: { headRef?: HeadRef }) {
+  return (
+    <>
+      <StaticBatch>
+        <Part g={G.box(0.55, 0.5, 0.95)} c="#ffffff" position={[0, 0.75, 0]} />
+        <Part g={G.box(0.3, 0.3, 0.02)} c="#2b2b2b" position={[0.28, 0.82, 0.1]} rotation={[0, Math.PI / 2, 0]} />
+        <Part g={G.box(0.25, 0.22, 0.02)} c="#2b2b2b" position={[-0.28, 0.75, -0.2]} rotation={[0, Math.PI / 2, 0]} />
+        <Part g={G.box(0.3, 0.02, 0.3)} c="#2b2b2b" position={[0.05, 1.005, -0.15]} />
+        {[
+          [-0.18, -0.32],
+          [0.18, -0.32],
+          [-0.18, 0.32],
+          [0.18, 0.32],
+        ].map(([x, z], k) => (
+          <Part key={k} g={G.box(0.13, 0.5, 0.13)} c="#f2f2f2" position={[x, 0.25, z]} />
+        ))}
+        <Part g={G.box(0.05, 0.4, 0.05)} c="#f2f2f2" position={[0, 0.7, -0.5]} rotation={[0.3, 0, 0]} />
+        <Part g={G.sphere(0.12, 6, 4)} c="#ffb3c7" position={[0, 0.5, 0.15]} scale={[1, 0.6, 1]} />
+      </StaticBatch>
+      <group ref={headRef} position={[0, 0.95, 0.5]}>
+        <StaticBatch>
+          <Part g={G.box(0.36, 0.34, 0.36)} c="#ffffff" position={[0, 0, 0.1]} />
+          <Part g={G.box(0.3, 0.18, 0.12)} c="#ffb3c7" position={[0, -0.08, 0.3]} />
+          <Part g={G.cone(0.04, 0.16, 4)} c="#f2e3b5" position={[-0.14, 0.22, 0.05]} rotation={[0, 0, 0.5]} />
+          <Part g={G.cone(0.04, 0.16, 4)} c="#f2e3b5" position={[0.14, 0.22, 0.05]} rotation={[0, 0, -0.5]} />
+          <Part g={G.sphere(0.03, 4, 3)} c="#2b2b2b" position={[-0.1, 0.06, 0.28]} />
+          <Part g={G.sphere(0.03, 4, 3)} c="#2b2b2b" position={[0.1, 0.06, 0.28]} />
+          <Part g={G.box(0.14, 0.05, 0.1)} c="#2b2b2b" position={[0.2, 0.08, 0.05]} />
+        </StaticBatch>
+      </group>
+    </>
+  );
+}
+
+/** One fluffy sheep: a cloud of wool on dark legs, with a dark face. */
+export function SheepModel({ headRef }: { headRef?: HeadRef }) {
+  return (
+    <>
+      <StaticBatch>
+        <Part g={G.ico(0.32, 1)} c="#fbf8f0" position={[0, 0.55, 0]} scale={[1, 0.85, 1.25]} />
+        <Part g={G.ico(0.2, 1)} c="#ffffff" position={[0.16, 0.72, 0.16]} />
+        <Part g={G.ico(0.2, 1)} c="#f1ecdf" position={[-0.16, 0.7, -0.14]} />
+        <Part g={G.ico(0.18, 1)} c="#ffffff" position={[0.02, 0.77, -0.3]} />
+        {[
+          [-0.14, -0.2],
+          [0.14, -0.2],
+          [-0.14, 0.2],
+          [0.14, 0.2],
+        ].map(([x, z], k) => (
+          <Part key={k} g={G.box(0.08, 0.34, 0.08)} c="#3a3a3a" position={[x, 0.17, z]} />
+        ))}
+      </StaticBatch>
+      <group ref={headRef} position={[0, 0.62, 0.38]}>
+        <StaticBatch>
+          <Part g={G.box(0.2, 0.24, 0.26)} c="#3a3a3a" position={[0, 0, 0.08]} />
+          <Part g={G.box(0.14, 0.05, 0.07)} c="#3a3a3a" position={[-0.15, 0.06, 0.02]} rotation={[0, 0, 0.4]} />
+          <Part g={G.box(0.14, 0.05, 0.07)} c="#3a3a3a" position={[0.15, 0.06, 0.02]} rotation={[0, 0, -0.4]} />
+          <Part g={G.ico(0.12, 1)} c="#ffffff" position={[0, 0.13, 0.02]} />
+          <Part g={G.sphere(0.028, 4, 3)} c="#ffffff" position={[-0.06, 0.04, 0.21]} />
+          <Part g={G.sphere(0.028, 4, 3)} c="#ffffff" position={[0.06, 0.04, 0.21]} />
+        </StaticBatch>
+      </group>
+    </>
+  );
+}
+
+type PenBounds = { minX: number; maxX: number; minZ: number; maxZ: number };
+
+export function Chickens({ count, bounds, seed }: { count: number; bounds: PenBounds; seed: number }) {
   const { list, refs, heads } = useWanderers(count, bounds, seed, 0.9);
   return (
     <Plain>
-    <group userData={DYNAMIC}>
-      {list.map((_, i) => (
-        <group key={i} ref={(g) => void (refs.current[i] = g)} scale={0.9}>
-          <StaticBatch>
-            <Part g={G.sphere(0.2, 8, 6)} c={i % 3 === 2 ? "#c98b52" : "#ffffff"} position={[0, 0.27, 0]} scale={[0.9, 0.85, 1.15]} />
-            <Part g={G.cone(0.1, 0.22, 5)} c={i % 3 === 2 ? "#a8642a" : "#f2f2f2"} position={[0, 0.38, -0.2]} rotation={[-0.9, 0, 0]} />
-            <Part g={G.cyl(0.015, 0.015, 0.14, 4)} c="#f29e4c" position={[-0.06, 0.07, 0]} />
-            <Part g={G.cyl(0.015, 0.015, 0.14, 4)} c="#f29e4c" position={[0.06, 0.07, 0]} />
-          </StaticBatch>
-          <group ref={(g) => void (heads.current[i] = g)} position={[0, 0.38, 0.16]}>
-            <StaticBatch>
-              <Part g={G.sphere(0.11, 7, 5)} c={i % 3 === 2 ? "#c98b52" : "#ffffff"} position={[0, 0.08, 0.04]} />
-              <Part g={G.box(0.04, 0.08, 0.1)} c="#e8413c" position={[0, 0.2, 0.03]} />
-              <Part g={G.cone(0.04, 0.09, 4)} c="#f29e4c" position={[0, 0.07, 0.17]} rotation={[Math.PI / 2, 0, 0]} />
-              <Part g={G.sphere(0.025, 4, 3)} c="#e8413c" position={[0, 0.0, 0.12]} />
-            </StaticBatch>
+      <group userData={DYNAMIC}>
+        {list.map((_, i) => (
+          <group key={i} ref={(g) => void (refs.current[i] = g)} scale={0.9}>
+            <ChickenModel brown={i % 3 === 2} headRef={(g) => void (heads.current[i] = g)} />
           </group>
-        </group>
-      ))}
-    </group>
+        ))}
+      </group>
     </Plain>
   );
 }
 
-export function Cows({ count, bounds, seed }: { count: number; bounds: { minX: number; maxX: number; minZ: number; maxZ: number }; seed: number }) {
+export function Cows({ count, bounds, seed }: { count: number; bounds: PenBounds; seed: number }) {
   const { list, refs, heads } = useWanderers(count, bounds, seed, 0.5);
   return (
     <Plain>
-    <group userData={DYNAMIC}>
-      {list.map((_, i) => (
-        <group key={i} ref={(g) => void (refs.current[i] = g)}>
-          <StaticBatch>
-            <Part g={G.box(0.55, 0.5, 0.95)} c="#ffffff" position={[0, 0.75, 0]} />
-            <Part g={G.box(0.3, 0.3, 0.02)} c="#2b2b2b" position={[0.28, 0.82, 0.1]} rotation={[0, Math.PI / 2, 0]} />
-            <Part g={G.box(0.25, 0.22, 0.02)} c="#2b2b2b" position={[-0.28, 0.75, -0.2]} rotation={[0, Math.PI / 2, 0]} />
-            <Part g={G.box(0.3, 0.02, 0.3)} c="#2b2b2b" position={[0.05, 1.005, -0.15]} />
-            {[
-              [-0.18, -0.32],
-              [0.18, -0.32],
-              [-0.18, 0.32],
-              [0.18, 0.32],
-            ].map(([x, z], k) => (
-              <Part key={k} g={G.box(0.13, 0.5, 0.13)} c="#f2f2f2" position={[x, 0.25, z]} />
-            ))}
-            <Part g={G.box(0.05, 0.4, 0.05)} c="#f2f2f2" position={[0, 0.7, -0.5]} rotation={[0.3, 0, 0]} />
-            <Part g={G.sphere(0.12, 6, 4)} c="#ffb3c7" position={[0, 0.5, 0.15]} scale={[1, 0.6, 1]} />
-          </StaticBatch>
-          <group ref={(g) => void (heads.current[i] = g)} position={[0, 0.95, 0.5]}>
-            <StaticBatch>
-              <Part g={G.box(0.36, 0.34, 0.36)} c="#ffffff" position={[0, 0, 0.1]} />
-              <Part g={G.box(0.3, 0.18, 0.12)} c="#ffb3c7" position={[0, -0.08, 0.3]} />
-              <Part g={G.cone(0.04, 0.16, 4)} c="#f2e3b5" position={[-0.14, 0.22, 0.05]} rotation={[0, 0, 0.5]} />
-              <Part g={G.cone(0.04, 0.16, 4)} c="#f2e3b5" position={[0.14, 0.22, 0.05]} rotation={[0, 0, -0.5]} />
-              <Part g={G.sphere(0.03, 4, 3)} c="#2b2b2b" position={[-0.1, 0.06, 0.28]} />
-              <Part g={G.sphere(0.03, 4, 3)} c="#2b2b2b" position={[0.1, 0.06, 0.28]} />
-              <Part g={G.box(0.14, 0.05, 0.1)} c="#2b2b2b" position={[0.2, 0.08, 0.05]} />
-            </StaticBatch>
+      <group userData={DYNAMIC}>
+        {list.map((_, i) => (
+          <group key={i} ref={(g) => void (refs.current[i] = g)}>
+            <CowModel headRef={(g) => void (heads.current[i] = g)} />
           </group>
-        </group>
-      ))}
-    </group>
+        ))}
+      </group>
     </Plain>
   );
 }
 
-/** Fluffy sheep: a cloud of wool on dark legs, with a dark face. */
-export function Sheep({ count, bounds, seed }: { count: number; bounds: { minX: number; maxX: number; minZ: number; maxZ: number }; seed: number }) {
+export function Sheep({ count, bounds, seed }: { count: number; bounds: PenBounds; seed: number }) {
   const { list, refs, heads } = useWanderers(count, bounds, seed, 0.45);
   return (
     <Plain>
-    <group userData={DYNAMIC}>
-      {list.map((_, i) => (
-        <group key={i} ref={(g) => void (refs.current[i] = g)} scale={i % 3 === 2 ? 0.8 : 1}>
-          <StaticBatch>
-            <Part g={G.ico(0.32, 1)} c="#fbf8f0" position={[0, 0.55, 0]} scale={[1, 0.85, 1.25]} />
-            <Part g={G.ico(0.2, 1)} c="#ffffff" position={[0.16, 0.72, 0.16]} />
-            <Part g={G.ico(0.2, 1)} c="#f1ecdf" position={[-0.16, 0.7, -0.14]} />
-            <Part g={G.ico(0.18, 1)} c="#ffffff" position={[0.02, 0.77, -0.3]} />
-            {[
-              [-0.14, -0.2],
-              [0.14, -0.2],
-              [-0.14, 0.2],
-              [0.14, 0.2],
-            ].map(([x, z], k) => (
-              <Part key={k} g={G.box(0.08, 0.34, 0.08)} c="#3a3a3a" position={[x, 0.17, z]} />
-            ))}
-          </StaticBatch>
-          <group ref={(g) => void (heads.current[i] = g)} position={[0, 0.62, 0.38]}>
-            <StaticBatch>
-              <Part g={G.box(0.2, 0.24, 0.26)} c="#3a3a3a" position={[0, 0, 0.08]} />
-              <Part g={G.box(0.14, 0.05, 0.07)} c="#3a3a3a" position={[-0.15, 0.06, 0.02]} rotation={[0, 0, 0.4]} />
-              <Part g={G.box(0.14, 0.05, 0.07)} c="#3a3a3a" position={[0.15, 0.06, 0.02]} rotation={[0, 0, -0.4]} />
-              <Part g={G.ico(0.12, 1)} c="#ffffff" position={[0, 0.13, 0.02]} />
-              <Part g={G.sphere(0.028, 4, 3)} c="#ffffff" position={[-0.06, 0.04, 0.21]} />
-              <Part g={G.sphere(0.028, 4, 3)} c="#ffffff" position={[0.06, 0.04, 0.21]} />
-            </StaticBatch>
+      <group userData={DYNAMIC}>
+        {list.map((_, i) => (
+          <group key={i} ref={(g) => void (refs.current[i] = g)} scale={i % 3 === 2 ? 0.8 : 1}>
+            <SheepModel headRef={(g) => void (heads.current[i] = g)} />
           </group>
-        </group>
-      ))}
-    </group>
+        ))}
+      </group>
     </Plain>
   );
 }

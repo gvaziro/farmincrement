@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isSellable } from "@/game/data/items";
-import { FARMHOUSE, FIELDS, LAMPS, MACHINES, MARKET, PADS, TRASH, WATER_RECTS, ZONES, fieldById, machineById } from "@/game/data/layout";
+import { FARMHOUSE, FIELDS, LAMPS, MACHINES, MARKET, MERCHANT_SPOTS, PADS, TRASH, WATER_RECTS, ZONES, fieldById, machineById, zoneRect } from "@/game/data/layout";
 import { createField } from "@/game/engine/world";
 import { CROPS } from "@/game/data/crops";
 import { MACHINE_TYPES } from "@/game/data/machines";
@@ -29,6 +29,14 @@ describe("layout data", () => {
     for (const m of MACHINES) {
       const viaPad = PADS.some((p) => p.effect.type === "machine" && p.effect.id === m.id);
       expect(viaPad || m.cost === 0, m.id).toBe(true);
+    }
+  });
+
+  it("merchant spots lie inside their own plot", () => {
+    for (const [zone, m] of Object.entries(MERCHANT_SPOTS)) {
+      const r = zoneRect(ZONES.find((z) => z.id === zone)!);
+      expect(Math.abs(m.x - r.x) + 1.8, zone).toBeLessThan(r.hw);
+      expect(m.z - 1 > r.z - r.hd && m.z + 2.5 < r.z + r.hd, zone).toBe(true);
     }
   });
 
@@ -84,6 +92,8 @@ describe("layout data", () => {
     }
     // Lamp posts are decor: they must not stand on pads, zones, fields or buildings.
     for (const [i, l] of LAMPS.entries()) rects.push({ id: `lamp ${i}`, x: l.x, z: l.z, hw: 0.3, hd: 0.3 });
+    // The merchant's cart and the spot in front of it, on each plot.
+    for (const [zone, m] of Object.entries(MERCHANT_SPOTS)) rects.push({ id: `merchant ${zone}`, x: m.x, z: m.z + 0.75, hw: 1.8, hd: 1.75 });
     // The pier and the water must stay clear of buildings and their zones.
     for (const [i, w] of WATER_RECTS.entries()) rects.push({ id: `water ${i}`, ...w });
     const overlaps: string[] = [];

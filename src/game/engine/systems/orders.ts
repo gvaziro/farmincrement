@@ -38,7 +38,7 @@ export function updateOrders(game: Game, dt: number) {
 }
 
 /** Products the farm can make right now, most valuable first. */
-function availableProducts(game: Game): ItemId[] {
+export function availableProducts(game: Game): ItemId[] {
   const set = new Set<ItemId>();
   for (const m of game.state.machines) {
     const out = m.type.output.item;

@@ -217,6 +217,25 @@ export const LAMPS: readonly { x: number; z: number }[] = [
   { x: 36.8, z: -43.2 },
 ];
 
+/**
+ * Where the travelling merchant parks his cart on each plot (the farm itself
+ * is too busy). The cart faces south; the player stands just in front of it.
+ */
+export const MERCHANT_SPOTS: Partial<Record<ZoneId, { x: number; z: number }>> = {
+  coop: { x: -1.5, z: -30.0 },
+  pasture: { x: 36.8, z: -9.2 },
+  depot: { x: 35.5, z: 13.2 },
+  orchard: { x: 4.0, z: 27.2 },
+  garden: { x: -33.5, z: 6.2 },
+  sweets: { x: 15.4, z: -30.8 },
+  apiary: { x: -15.4, z: -29.8 },
+  sheep: { x: -16.0, z: -53.2 },
+  berries: { x: -9.2, z: -52.6 },
+  pumpkins: { x: 16.0, z: -53.3 },
+};
+/** The merchant's cart and the spot in front of it where goods are handed over. */
+export const MERCHANT_CART = { w: 2.4, d: 1.4, drop: { dz: 1.7, w: 2.2, d: 1.4 } };
+
 // ── workers ─────────────────────────────────────────────────────────────
 export type WorkerTarget =
   | { kind: "machine"; id: string }

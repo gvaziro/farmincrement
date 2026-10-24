@@ -4,6 +4,7 @@
  * generations too). Some come with a hat for the farmer.
  */
 import type { ItemId } from "../data/items";
+import { ALL_FINDS } from "../data/finds";
 import { ZONES } from "../data/layout";
 import type { HatId } from "../data/hats";
 import { MACHINE_MAX_LEVEL } from "../data/balance";
@@ -32,14 +33,19 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: "worker_1", name: "Бригадир", desc: "Найми первого работника", icon: "👷", goal: 1, value: (g) => g.state.workers.length, hat: "cap" },
   { id: "earned_1k", name: "Первая тысяча", desc: "Заработай $1K", icon: "💵", goal: 1_000, value: (g) => g.state.stats.earned, unit: "money" },
   { id: "zones_4", name: "Землевладелец", desc: "Купи три новых участка", icon: "🗺️", goal: 4, value: (g) => g.state.zones.size },
+  { id: "golden_1", name: "Золотая находка", desc: "Подбери золотое растение", icon: "✨", goal: 1, value: (g) => g.state.stats.golden },
+  { id: "caught_1", name: "Ловкие руки", desc: "Поймай сбежавшее животное", icon: "🐔", goal: 1, value: (g) => g.state.stats.caught },
   { id: "orders_10", name: "Надёжный поставщик", desc: "Выполни 10 заказов", icon: "📋", goal: 10, value: (g) => g.state.stats.orders },
+  { id: "merchant_1", name: "Желанный гость", desc: "Привези заезжему торговцу всё, что он просил", icon: "🛒", goal: 1, value: (g) => g.state.stats.merchants },
   { id: "harvest_1000", name: "Хозяин полей", desc: "Собери 1 000 урожаев", icon: "🚜", goal: 1_000, value: (g) => g.state.stats.harvested },
   { id: "winter", name: "Первая зима", desc: "Доживи до зимы", icon: "❄️", goal: 3, value: (g) => g.state.stats.seasons, hat: "beanie" },
   { id: "fair_1", name: "Ярмарочный день", desc: "Выполни ярмарочный заказ", icon: "🎪", goal: 1, value: (g) => g.state.stats.fairs, hat: "party" },
   { id: "rain", name: "Под дождём", desc: "Собери 100 урожаев в дождь", icon: "🌧️", goal: 100, value: (g) => g.state.stats.rainHarvest },
+  { id: "finds_10", name: "Коллекционер", desc: "Вклей в альбом 10 находок", icon: "📖", goal: 10, value: (g) => g.state.album.size },
   { id: "year", name: "Целый год", desc: "Проживи все четыре сезона", icon: "📅", goal: 4, value: (g) => g.state.stats.seasons, hat: "wreath" },
   { id: "truck_2", name: "Логист", desc: "Купи второй грузовик", icon: "🚚", goal: 2, value: (g) => g.state.depot?.trucks.length ?? 0 },
   { id: "workers_25", name: "Работодатель", desc: "25 работников на ферме", icon: "👥", goal: 25, value: (g) => g.state.workers.length },
+  { id: "whistle_25", name: "Строгий бригадир", desc: "Свистни в свисток бригадира 25 раз", icon: "📯", goal: 25, value: (g) => g.state.stats.whistles },
   { id: "earned_1m", name: "Миллионер", desc: "Заработай $1M", icon: "💰", goal: 1_000_000, value: (g) => g.state.stats.earned, unit: "money", hat: "cowboy" },
   { id: "autumn_bonus", name: "Щедрая осень", desc: "Получи 50 бонусных урожаев осенью", icon: "🍂", goal: 50, value: (g) => g.state.stats.bonusHarvest, hat: "pumpkin" },
   { id: "playtime", name: "Фермер со стажем", desc: "Проведи на ферме 2 часа", icon: "⏱️", goal: 7_200, value: (g) => g.state.stats.playTime, unit: "time" },
@@ -48,6 +54,9 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: "night_fish", name: "Ночной рыбак", desc: "Поймай 50 рыб ночью", icon: "🎣", goal: 50, value: (g) => g.state.stats.nightFish, hat: "fisher" },
   { id: "orders_50", name: "Любимец рынка", desc: "Выполни 50 заказов", icon: "⭐", goal: 50, value: (g) => g.state.stats.orders },
   { id: "fairs_4", name: "Ярмарка круглый год", desc: "Выполни 4 ярмарочных заказа", icon: "🎡", goal: 4, value: (g) => g.state.stats.fairs },
+  { id: "golden_25", name: "Золотоискатель", desc: "Подбери 25 золотых растений", icon: "💫", goal: 25, value: (g) => g.state.stats.golden },
+  { id: "merchant_10", name: "Друг торговцев", desc: "Обслужи 10 заезжих торговцев", icon: "🤝", goal: 10, value: (g) => g.state.stats.merchants },
+  { id: "caught_10", name: "Пастух", desc: "Поймай 10 беглецов", icon: "🐾", goal: 10, value: (g) => g.state.stats.caught },
   { id: "sweater", name: "Тёплый свитер", desc: "Свяжи первый свитер", icon: "🧥", goal: 1, value: (g) => made(g, "sweater") },
   { id: "icecream_100", name: "Сладкоежка", desc: "Сделай 100 порций мороженого", icon: "🍦", goal: 100, value: (g) => made(g, "icecream") },
   { id: "first_pie", name: "Тыквенный пирог", desc: "Испеки первый тыквенный пирог", icon: "🥧", goal: 1, value: (g) => made(g, "pie"), hat: "chef" },
@@ -56,6 +65,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: "zones_all", name: "Вся карта", desc: "Открой все участки", icon: "🌍", goal: ZONES.length, value: (g) => g.state.zones.size },
   { id: "statue", name: "Золотая статуя", desc: "Построй Золотую статую", icon: "🏆", goal: 1, value: (g) => (g.state.statue ? 1 : 0), hat: "crown" },
   { id: "earned_1b", name: "Миллиардер", desc: "Заработай $1B", icon: "💎", goal: 1_000_000_000, value: (g) => g.state.stats.earned, unit: "money", hat: "tophat" },
+  { id: "album", name: "Полный альбом", desc: "Собери все находки до единой", icon: "📚", goal: ALL_FINDS.length, value: (g) => g.state.album.size, hat: "explorer" },
   { id: "generation", name: "Новое поколение", desc: "Передай ферму наследникам", icon: "👨‍👩‍👧", goal: 1, value: (g) => g.state.prestige.generations },
   { id: "stars_10", name: "Звёздная семья", desc: "Заработай 10 звёзд наследия", icon: "🌟", goal: 10, value: (g) => g.state.prestige.totalStars },
   { id: "perk_first", name: "Семейное дело", desc: "Купи улучшение в лавке наследия", icon: "🏛️", goal: 1, value: (g) => Object.values(g.state.legacy).reduce((s, l) => s + (l ?? 0), 0) },

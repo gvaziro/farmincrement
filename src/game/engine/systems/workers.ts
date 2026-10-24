@@ -12,6 +12,7 @@ import type { Worker } from "../types";
 import { machineAccepts } from "./interact";
 import { harvestAround, isRipe } from "./harvest";
 import { moveActor, updateLean } from "./movement";
+import { isGolden, workerBoost } from "./surprises";
 
 const ARRIVE = 0.18;
 const cropSets = new Map<string, ReadonlySet<CropId>>();
@@ -61,12 +62,14 @@ function followPath(game: Game, w: Worker, dt: number): boolean {
     }
     return false;
   }
-  const sp = Math.min(w.speed, d / dt);
+  // The foreman's whistle: everybody runs.
+  const speed = w.speed * workerBoost(game.state);
+  const sp = Math.min(speed, d / dt);
   const bx = w.x;
   const bz = w.z;
   moveActor(game, w, (dx / d) * sp, (dz / d) * sp, dt);
   // Re-plan when blocked (a building popped up on the path, etc.).
-  if (Math.hypot(w.x - bx, w.z - bz) < w.speed * dt * 0.2) {
+  if (Math.hypot(w.x - bx, w.z - bz) < speed * dt * 0.2) {
     w.stuck += dt;
     w.repath += dt;
     const last = w.path[w.path.length - 1];
@@ -133,7 +136,7 @@ function harvester(game: Game, w: Worker, dt: number) {
       const t = w.harvestTarget;
       const field = t ? game.state.fields[t.field] : null;
       const plant = t && field ? field.plants[t.plant] : null;
-      const ripe = !!plant && isRipe(field!.crop, plant);
+      const ripe = !!plant && isRipe(field!.crop, plant) && !isGolden(game.state, field!, plant);
       if (!ripe || !plant) {
         w.harvestTarget = nearestRipe(game, w, job.fields);
         if (!w.harvestTarget) {
@@ -196,7 +199,7 @@ function nearestRipe(game: Game, w: Worker, fieldIds: readonly string[]) {
     if (!fieldIds.includes(f.id) || f.spawnT < 0.7) continue;
     for (let pi = 0; pi < f.plants.length; pi++) {
       const p = f.plants[pi];
-      if (!isRipe(f.crop, p)) continue;
+      if (!isRipe(f.crop, p) || isGolden(game.state, f, p)) continue;
       // Prefer plants nobody else is heading to.
       let taken = false;
       for (const o of game.state.workers) {

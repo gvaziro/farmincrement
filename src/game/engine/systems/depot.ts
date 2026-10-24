@@ -84,7 +84,7 @@ export function updateDepot(game: Game, dt: number) {
         const full = t.cargo.length >= cap;
         if (t.incoming === 0 && t.cargo.length > 0 && (full || t.wait > 2.5)) {
           let value = 0;
-          for (const it of t.cargo) value += game.sellValue(it) * DEPOT_BONUS;
+          for (const it of t.cargo) value += game.salePrice(it) * DEPOT_BONUS;
           game.earn(value, true);
           game.state.stats.sold += t.cargo.length;
           game.emit({ type: "truckSold", value, x: t.x, z: t.z });

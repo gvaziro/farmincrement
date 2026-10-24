@@ -28,10 +28,13 @@ interface Generation {
   rows: string[];
   log: string[];
   perks: PerkId[];
+  /** Little events of this generation: golden plants picked, whistles, finds. */
+  events: { golden: number; whistles: number; caught: number; finds: number };
 }
 
 /** Play one generation until the statue stands. */
 function playGeneration(bot: Bot, perks: PerkId[]): Generation {
+  const start = { ...bot.st.stats, finds: bot.st.album.size };
   const zones: Record<string, number> = {};
   const rows: string[] = [];
   let nextReport = 0;
@@ -53,6 +56,12 @@ function playGeneration(bot: Bot, perks: PerkId[]): Generation {
     rows,
     log: bot.log.map((l) => `${fmt(l.t)}  ${l.what}`),
     perks,
+    events: {
+      golden: st.stats.golden - start.golden,
+      whistles: st.stats.whistles - start.whistles,
+      caught: st.stats.caught - start.caught,
+      finds: st.album.size - start.finds,
+    },
   };
 }
 
@@ -88,6 +97,9 @@ describe("balance", () => {
           `${i + 1}.  ${fmt(g.time)}  заработано $${formatMoney(g.earned).padEnd(6)}  → ${String(g.stars).padStart(3)} ⭐` +
           (i > 0 ? `   улучшения: ${perkList(g.perks)}` : ""),
       ),
+      "",
+      "── События (бот их не ищет: подбирает, что попалось по пути, и свистит, когда можно) ──",
+      ...gens.map((g, i) => `${i + 1}.  золотых растений ${g.events.golden} · свистков ${g.events.whistles} · беглецов поймано ${g.events.caught} · находок ${g.events.finds}`),
       "",
       "── Участки по поколениям ──",
       ...Object.keys(first.zones).map((z) => `${z.padEnd(9)} ${gens.map((g) => (z in g.zones ? fmt(g.zones[z]) : "   —   ")).join("   ")}`),

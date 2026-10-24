@@ -143,6 +143,19 @@ class Fx {
     p.grow = 0.6;
   }
 
+  /** A glint drifting up (golden plants, the gold rush). */
+  sparkle(x: number, y: number, z: number, color = "#ffe066") {
+    const p = this.spawn(0, x, y, z, color);
+    p.vx = (Math.random() - 0.5) * 0.4;
+    p.vz = (Math.random() - 0.5) * 0.4;
+    p.vy = 0.6 + Math.random() * 0.7;
+    p.max = 0.8 + Math.random() * 0.5;
+    p.size = 0.06 + Math.random() * 0.05;
+    p.gravity = 0;
+    p.drag = 0.8;
+    p.spin = (Math.random() - 0.5) * 10;
+  }
+
   /** A raindrop hitting the ground. */
   splash(x: number, z: number) {
     const p = this.spawn(1, x, 0.06, z, "#cfe3f5");

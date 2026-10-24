@@ -5,6 +5,7 @@ import { weatherGrowth } from "../weather";
 import { SOIL_PER_LEVEL } from "../../data/legacy";
 import type { Game } from "../Game";
 import type { Actor, Plant } from "../types";
+import { rollFind } from "./album";
 
 const TREE_RADIUS = 0.8;
 
@@ -15,7 +16,7 @@ export const bearsFruit = (crop: CropDef) => crop.kind !== "plant";
 export const isRipe = (crop: CropDef, p: Plant) => (bearsFruit(crop) ? p.fruits > 0 : p.growth >= 1);
 
 /** Extra reach on top of the actor's own radius for this crop. */
-const reachBonus = (crop: CropDef) => (crop.kind === "tree" ? TREE_RADIUS : crop.kind === "water" ? WATER_REACH : 0);
+export const reachBonus = (crop: CropDef) => (crop.kind === "tree" ? TREE_RADIUS : crop.kind === "water" ? WATER_REACH : 0);
 
 /** Grow plants and fruits. */
 export function updateFields(game: Game, dt: number) {
@@ -56,7 +57,8 @@ export function updateFields(game: Game, dt: number) {
 
 /**
  * Collect every ripe plant within reach. `crops` limits what a worker may take;
- * the player takes anything.
+ * the player takes anything — except a golden plant, which is picked up by
+ * walking close to it (systems/surprises.ts), full hands or not.
  */
 export function harvestAround(game: Game, a: Actor & { reach: number }, crops: ReadonlySet<CropId> | null) {
   const st = game.state;
@@ -71,8 +73,10 @@ export function harvestAround(game: Game, a: Actor & { reach: number }, crops: R
     const water = f.crop.kind === "water";
     const rr = r + bonus;
     const rr2 = rr * rr;
+    const g = st.surprises.golden;
+    const golden = g && g.field === f.id ? f.plants[g.plant] : null;
     for (const p of f.plants) {
-      if (!isRipe(f.crop, p)) continue;
+      if (!isRipe(f.crop, p) || p === golden) continue;
       const dx = p.x - a.x;
       const dz = p.z - a.z;
       if (dx * dx + dz * dz > rr2) continue;
@@ -104,6 +108,7 @@ export function harvestAround(game: Game, a: Actor & { reach: number }, crops: R
       st.stats.harvested++;
       if (st.weather === "rain") st.stats.rainHarvest++;
       game.emit({ type: "harvest", item, x: p.x, z: p.z, player: isPlayer });
+      if (isPlayer) rollFind(game, f.def.zone, p.x, p.z);
       // Autumn: every few harvests bring one more.
       if (st.season === "autumn" && st.stats.harvested % AUTUMN_BONUS_EVERY === 0 && a.stack.length < a.capacity) {
         game.giveToActor(a, item, p.x, 0.6, p.z, 0.42);

@@ -79,6 +79,15 @@ export function mulberry32(seed: number) {
   };
 }
 
+/** Next value in [0,1) of a mulberry32 sequence whose state lives in `s.seed` (so it can be saved). */
+export function nextRandom(s: { seed: number }) {
+  s.seed = (s.seed + 0x6d2b79f5) >>> 0;
+  let t = s.seed;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
 /** Stable hash of a string → 32-bit seed. */
 export function hashString(s: string) {
   let h = 2166136261;

@@ -120,6 +120,15 @@ const FANCY_HATS = {
       <Part g={G.cone(0.06, 0.02, 5)} c="#4fae3a" position={[0.06, 0.2, 0]} rotation={[0, 0, -0.6]} />
     </group>
   ),
+  explorer: () => (
+    // Pith helmet: a khaki dome, a sloping brim and a band.
+    <group position={[0, 0.13, 0]}>
+      <Part g={G.sphere(0.235, 10, 7)} c="#d9c48f" scale={[1, 0.8, 1.08]} position={[0, 0.06, 0]} />
+      <Part g={G.cyl(0.34, 0.37, 0.05, 14)} c="#cdb57c" position={[0, 0.0, 0]} rotation={[0.08, 0, 0]} />
+      <Part g={G.cyl(0.238, 0.238, 0.055, 12)} c="#8a6a3a" position={[0, 0.06, 0]} />
+      <Part g={G.sphere(0.04, 6, 4)} c="#e0d1a2" position={[0, 0.25, 0]} />
+    </group>
+  ),
   party: () => (
     <group position={[0, 0.2, 0.02]} rotation={[0.15, 0, 0.1]}>
       <Part g={G.cone(0.15, 0.36, 10)} c="#ff5d8f" position={[0, 0.18, 0]} />

@@ -5,7 +5,8 @@ import { useMemo, useRef } from "react";
 import { CircleGeometry, Color, InstancedMesh, MeshBasicMaterial, MeshLambertMaterial, Object3D } from "three";
 import { easeOutBack, easeOutCubic } from "@/game/core/math";
 import { TREE_FRUIT_SLOTS, treeYaw, type CropId } from "@/game/data/crops";
-import type { Field } from "@/game/engine/types";
+import { goldenPlant } from "@/game/engine/systems/surprises";
+import type { Field, Plant } from "@/game/engine/types";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI } from "@/runtime/store";
 import { G, mat } from "./kit";
@@ -22,7 +23,14 @@ const dummy = new Object3D();
 const tint = new Color();
 const GREEN = new Color(0.62, 0.95, 0.5);
 const WHITE = new Color(1, 1, 1);
+/** A golden plant: over-bright gold, so it shines among the others. */
+const GOLD = new Color(1.7, 1.3, 0.35);
 const MAX = 400;
+
+/** The golden plant this frame (or null). */
+const goldenOf = (runtime: Runtime): Plant | null => goldenPlant(runtime.game.state)?.plant ?? null;
+/** Golden plants pulse a little bigger. */
+const goldPulse = (t: number) => 1.12 + Math.sin(t * 4) * 0.06;
 
 /** Squash-and-stretch scale for a plant from growth and time since last pop. */
 function plantScale(growth: number, pop: number, spawn: number) {
@@ -112,20 +120,22 @@ function PlantLayer({ runtime, crop, model, variant }: { runtime: Runtime; crop:
     const m = ref.current;
     if (!m) return;
     const t = state.clock.elapsedTime;
+    const gold = goldenOf(runtime);
     let n = 0;
     for (const f of runtime.game.state.fields) {
       if (f.def.crop !== crop) continue;
       for (const p of f.plants) {
         if (n >= MAX) break;
         if (variant && Math.floor(p.seed * variant[0]) !== variant[1]) continue;
-        const s = plantScale(p.growth, p.pop, f.spawnT);
+        const s = plantScale(p.growth, p.pop, f.spawnT) * (p === gold ? goldPulse(t) : 1);
         const sway = p.growth >= 1 ? Math.sin(t * 1.6 + p.seed * 9 + p.x * 0.4) * 0.06 : 0;
         dummy.position.set(p.x, 0.07, p.z);
         dummy.rotation.set(sway, p.seed * 6.28, sway * 0.6);
         dummy.scale.set(s, s * (p.growth >= 1 ? 1 : 0.9), s);
         dummy.updateMatrix();
         m.setMatrixAt(n, dummy.matrix);
-        tint.copy(GREEN).lerp(WHITE, p.growth >= 1 ? 1 : p.growth * 0.6);
+        if (p === gold) tint.copy(GOLD);
+        else tint.copy(GREEN).lerp(WHITE, p.growth >= 1 ? 1 : p.growth * 0.6);
         m.setColorAt(n, tint);
         n++;
       }
@@ -141,24 +151,27 @@ function PlantLayer({ runtime, crop, model, variant }: { runtime: Runtime; crop:
 function RipeFruits({ runtime, crop, model }: { runtime: Runtime; crop: CropId; model: CropModel }) {
   const ref = useRef<InstancedMesh>(null);
   const geometry = useMemo(() => cropGeometry(model), [model]);
-  useFrame(() => {
+  useFrame((state) => {
     const m = ref.current;
     if (!m) return;
+    const gold = goldenOf(runtime);
     let n = 0;
     for (const f of runtime.game.state.fields) {
       if (f.def.crop !== crop) continue;
       for (const p of f.plants) {
         if (p.growth < 1) continue;
-        const s = plantScale(p.growth, p.pop, f.spawnT);
+        const s = plantScale(p.growth, p.pop, f.spawnT) * (p === gold ? goldPulse(state.clock.elapsedTime) : 1);
         dummy.position.set(p.x, 0.07, p.z);
         dummy.rotation.set(0, p.seed * 6.28, 0);
         dummy.scale.setScalar(s);
         dummy.updateMatrix();
+        m.setColorAt(n, p === gold ? GOLD : WHITE);
         m.setMatrixAt(n++, dummy.matrix);
       }
     }
     m.count = n;
     m.instanceMatrix.needsUpdate = true;
+    if (m.instanceColor) m.instanceColor.needsUpdate = true;
   });
   return <instancedMesh ref={ref} args={[geometry, vmat, MAX]} castShadow frustumCulled={false} />;
 }
@@ -175,6 +188,7 @@ function Trees({ runtime }: { runtime: Runtime }) {
     const am = apples.current;
     if (!tm || !cm || !am) return;
     const t = state.clock.elapsedTime;
+    const gold = goldenOf(runtime);
     let n = 0;
     let a = 0;
     for (const f of runtime.game.state.fields) {
@@ -198,8 +212,10 @@ function Trees({ runtime }: { runtime: Runtime }) {
           const grow = k === p.fruits - 1 && p.pop < 0.4 ? easeOutBack(p.pop / 0.4) : 1;
           dummy.position.set(p.x + (sl[0] * c + sl[2] * sn) * spawn, sl[1] * spawn + Math.sin(t * 2 + k) * 0.02, p.z + (-sl[0] * sn + sl[2] * c) * spawn);
           dummy.rotation.set(0, 0, 0);
-          dummy.scale.setScalar(spawn * grow);
+          dummy.scale.setScalar(spawn * grow * (p === gold ? 1.25 : 1));
           dummy.updateMatrix();
+          // A golden tree bears golden apples.
+          am.setColorAt(a, p === gold ? GOLD : WHITE);
           am.setMatrixAt(a++, dummy.matrix);
         }
       }
@@ -210,6 +226,7 @@ function Trees({ runtime }: { runtime: Runtime }) {
     tm.instanceMatrix.needsUpdate = true;
     cm.instanceMatrix.needsUpdate = true;
     am.instanceMatrix.needsUpdate = true;
+    if (am.instanceColor) am.instanceColor.needsUpdate = true;
   });
 
   return (
@@ -241,6 +258,7 @@ function FishSpots({ runtime }: { runtime: Runtime }) {
     if (!rm || !fm || !hm) return;
     const t = state.clock.elapsedTime;
     const ice = seasonVisual.winter;
+    const gold = goldenOf(runtime);
     let r = 0;
     let k = 0;
     let h = 0;
@@ -273,8 +291,9 @@ function FishSpots({ runtime }: { runtime: Runtime }) {
         const along = (ph - 0.5) * 0.7;
         dummy.position.set(p.x + Math.cos(yaw) * along, 0.02 + Math.sin(ph * Math.PI) * 0.6, p.z - Math.sin(yaw) * along);
         dummy.rotation.set(0, yaw, (0.5 - ph) * 2.2);
-        dummy.scale.setScalar(0.95 * spawn);
+        dummy.scale.setScalar(0.95 * spawn * (p === gold ? 1.3 : 1));
         dummy.updateMatrix();
+        fm.setColorAt(k, p === gold ? GOLD : WHITE);
         fm.setMatrixAt(k++, dummy.matrix);
       }
     }
@@ -283,6 +302,7 @@ function FishSpots({ runtime }: { runtime: Runtime }) {
     hm.count = h;
     rm.instanceMatrix.needsUpdate = true;
     fm.instanceMatrix.needsUpdate = true;
+    if (fm.instanceColor) fm.instanceColor.needsUpdate = true;
     hm.instanceMatrix.needsUpdate = true;
   });
   return (

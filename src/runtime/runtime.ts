@@ -8,15 +8,17 @@ import { ITEMS, type ItemId } from "@/game/data/items";
 import { MARKET, ZONE_D, ZONE_W, ZONES, zoneById } from "@/game/data/layout";
 import { dayNumber, dayPhase, nightFactor, timeOfDay } from "@/game/engine/daycycle";
 import { Game } from "@/game/engine/Game";
+import { SET_BONUS, findById } from "@/game/data/finds";
 import { HATS } from "@/game/data/hats";
 import { PERKS } from "@/game/data/legacy";
+import { MERCHANT_MULT, RUSH_MULT, RUSH_TIME } from "@/game/data/surprises";
 import { achievementById } from "@/game/engine/achievements";
 import { SEASONS } from "@/game/engine/seasons";
 import { WEATHER_NAMES, rainbowAt, weatherAt } from "@/game/engine/weather";
 import { SAVE_KEY, deserialize, isFutureSave, offlineEarnings, serialize, type SaveData } from "@/game/engine/save";
 import { encodeSave } from "@/game/engine/saveCode";
 import { TUTORIAL, tutorialText } from "@/game/engine/tutorial";
-import type { GameEvent } from "@/game/engine/types";
+import type { GameEvent, RunawayKind } from "@/game/engine/types";
 import { fx } from "@/render/fx";
 import { NEWS_VERSION } from "@/ui/news";
 import { addBackup, migrateLegacyBackups, type Backup, type BackupReason } from "./backups";
@@ -328,6 +330,9 @@ export class Runtime {
     const season = st.season;
     const weather = st.weather;
     const rainbow = rainbowAt(st.dayClock) > 0.3;
+    const s = st.surprises;
+    const surprise = { rush: Math.ceil(s.rush), whistle: Math.ceil(s.whistle), whistleCd: Math.ceil(s.whistleCd), workers: st.workers.length > 0 };
+    const su = ui.surprise;
     const changed =
       ui.money !== money ||
       ui.hint?.text !== hint?.text ||
@@ -344,9 +349,41 @@ export class Runtime {
       ui.clock.rainbow !== rainbow ||
       ui.hat !== st.hat ||
       ui.generation !== st.prestige.generations ||
-      ui.trophies !== st.achievements.size;
+      ui.trophies !== st.achievements.size ||
+      ui.album !== st.album.size ||
+      su.rush !== surprise.rush ||
+      su.whistle !== surprise.whistle ||
+      su.whistleCd !== surprise.whistleCd ||
+      su.workers !== surprise.workers;
     if (changed || ui.panel) {
-      useUI.setState({ money, hint, goal, stars: st.prestige.stars, statue: st.statue, carry: [carried, cap], clock: { day, phase, season, weather, rainbow }, hat: st.hat, generation: st.prestige.generations, trophies: st.achievements.size, tick: ui.tick + 1 });
+      useUI.setState({ money, hint, goal, stars: st.prestige.stars, statue: st.statue, carry: [carried, cap], clock: { day, phase, season, weather, rainbow }, hat: st.hat, generation: st.prestige.generations, trophies: st.achievements.size, album: st.album.size, surprise, tick: ui.tick + 1 });
+    }
+  }
+
+  private golden(e: Extract<GameEvent, { type: "golden" }>) {
+    if (e.state !== "collect") {
+      if (e.state === "spawn") {
+        pushToast("Золотое растение! Успей подобрать за минуту", "✨");
+        sfx.play("golden", 0.5);
+      } else pushToast("Золотое растение потускнело…", "🍂");
+      return;
+    }
+    fx.confetti(e.x, 0.8, e.z, 60, GOLD_CONFETTI);
+    for (let i = 0; i < 12; i++) fx.sparkle(e.x + (Math.random() - 0.5) * 1.4, 0.3 + Math.random(), e.z + (Math.random() - 0.5) * 1.4);
+    sfx.play("golden");
+    vibrate([20, 30, 20]);
+    if (e.reward === "rush") {
+      pushToast(`Золотая лихорадка! Все продажи ×${RUSH_MULT} — ${RUSH_TIME} секунд`, "✨");
+      fx.text(`Продажи ×${RUSH_MULT}!`, e.x, 2.4, e.z, "big");
+    } else if (e.reward === "money") {
+      pushToast(`Мешок золота: +$${formatMoney(e.value)}`, "💰");
+      fx.coins(e.x, 1, e.z, 16);
+      fx.text(`+$${formatMoney(e.value)}`, e.x, 2.4, e.z, "big");
+      sfx.play("cash");
+    } else {
+      pushToast("Урожайный бум: всё поспело разом!", "🌾");
+      fx.text("Урожайный бум!", e.x, 2.4, e.z, "big");
+      fx.shake = Math.max(fx.shake, 0.3);
     }
   }
 
@@ -514,6 +551,60 @@ export class Runtime {
         if (e.player || this.nearPlayer(e.x, e.z, 8)) fx.text("+1", e.x, 1.4, e.z, "level");
         if (e.player) sfx.play("pick");
         break;
+      case "golden":
+        this.golden(e);
+        break;
+      case "rushEnd":
+        pushToast("Золотая лихорадка закончилась", "✨");
+        break;
+      case "merchant":
+        if (e.state === "arrive") {
+          pushToast(`Заезжий торговец: купит ${e.need} × ${ITEMS[e.item].name.toLowerCase()} по цене ×${MERCHANT_MULT}`, "🛒");
+          fx.poof(e.x, e.z, 1.6, "#f3ead8");
+          sfx.play("bell");
+        } else if (e.state === "done") {
+          pushToast(`Торговец доволен: +$${formatMoney(e.earned ?? 0)}`, "🛒");
+          fx.confetti(e.x, 2.2, e.z, 50);
+          fx.text("Спасибо!", e.x, 3.6, e.z, "big");
+          sfx.play("purchase");
+          sfx.play("bell");
+        } else pushToast("Торговец не дождался и уехал — заглянет ещё", "🛒");
+        break;
+      case "runaway": {
+        const a = ANIMALS[e.kind];
+        if (e.state === "escape") {
+          pushToast(`${a.name} сбежала ${a.from}! Догони её`, a.icon);
+          sfx.play(a.sound);
+        } else if (e.state === "caught") {
+          pushToast(`${a.lines[Math.floor(Math.random() * a.lines.length)]} +$${formatMoney(e.value ?? 0)}`, a.icon);
+          fx.confetti(e.x, 1, e.z, 34);
+          fx.coins(e.x, 1, e.z, 10);
+          fx.text(`+$${formatMoney(e.value ?? 0)}`, e.x, 2.4, e.z, "big");
+          sfx.play(a.sound);
+          sfx.play("cash");
+          vibrate([20, 30, 20]);
+        } else pushToast(`${a.name} нагулялась и вернулась домой сама`, a.icon);
+        break;
+      }
+      case "find": {
+        const f = findById(e.id);
+        if (!f) break;
+        pushToast(`Находка для альбома: ${f.find.name}`, f.find.icon);
+        if (e.complete) pushToast(`Набор «${zoneById(f.set.zone).name}» собран: его товары дороже на ${Math.round(SET_BONUS * 100)}%`, "📖");
+        fx.confetti(e.x, 0.8, e.z, e.complete ? 70 : 28, GOLD_CONFETTI);
+        fx.text(f.find.icon, e.x, 1.8, e.z, "big");
+        sfx.play("find");
+        vibrate(20);
+        break;
+      }
+      case "whistle":
+        if (e.state === "start") {
+          sfx.play("whistle");
+          const p = this.game.state.player;
+          fx.text("Живее, ребята!", p.x, 2.6, p.z, "info");
+          for (const w of this.game.state.workers.slice(0, 40)) fx.text("!", w.x, 2.1, w.z, "level");
+        }
+        break;
       case "statue": {
         const p = this.game.state.player;
         for (let i = 0; i < 4; i++) fx.confetti(p.x + (i - 1.5) * 2, 1, p.z, 60);
@@ -524,6 +615,34 @@ export class Runtime {
     }
   }
 }
+
+/** Golden plants, finds. */
+const GOLD_CONFETTI = ["#ffd23f", "#ffcc33", "#fff1a8", "#ff9f1c"];
+
+/** Runaways: what they are called and what they say when caught. */
+const ANIMALS: Record<RunawayKind, { name: string; icon: string; from: string; sound: "cluck" | "moo" | "baa"; lines: string[] }> = {
+  chicken: {
+    name: "Курица",
+    icon: "🐔",
+    from: "из курятника",
+    sound: "cluck",
+    lines: ["«Ко-ко! Я просто хотела посмотреть мир»", "«Ко-ко-ко! Ладно, ладно, иду»", "Поймана! «Ко… ко?»"],
+  },
+  cow: {
+    name: "Корова",
+    icon: "🐄",
+    from: "с пастбища",
+    sound: "moo",
+    lines: ["«Му-у! Трава там и правда зеленее»", "«Му! Я только на минуточку»", "Поймана! «Му-у-у…»"],
+  },
+  sheep: {
+    name: "Овца",
+    icon: "🐑",
+    from: "из овчарни",
+    sound: "baa",
+    lines: ["«Бе-е! Я не убегала — я гуляла»", "«Бе-е-е! Ну и ладно»", "Поймана! «Бе?»"],
+  },
+};
 
 /** Confetti colours of each season's arrival. */
 const SEASON_CONFETTI = {

@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { sfx } from "@/audio/sfx";
 import { formatDuration, formatMoney, roman } from "@/game/core/format";
+import { ALL_FINDS, FIND_SETS, SET_BONUS, goodsOf, setComplete } from "@/game/data/finds";
 import { HATS, HAT_IDS } from "@/game/data/hats";
+import { ITEMS } from "@/game/data/items";
+import { zoneById } from "@/game/data/layout";
 import { PERKS, PERK_IDS, type PerkId } from "@/game/data/legacy";
 import { ACHIEVEMENTS, type AchievementDef } from "@/game/engine/achievements";
 import type { Game } from "@/game/engine/Game";
@@ -11,7 +14,7 @@ import { PLAYER_STATS, WORKER_STATS, statMaxLevel, statValue, type LevelledStat,
 import type { Runtime } from "@/runtime/runtime";
 import { useUI } from "@/runtime/store";
 
-type Tab = "farmer" | "workers" | "trophies" | "legacy";
+type Tab = "farmer" | "workers" | "trophies" | "album" | "legacy";
 
 export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
   const panel = useUI((s) => s.panel);
@@ -41,6 +44,9 @@ export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
           )}
           <button className={`tab ${current === "trophies" ? "tab--on" : ""}`} onClick={() => setTab("trophies")}>
             Трофеи 🏆
+          </button>
+          <button className={`tab ${current === "album" ? "tab--on" : ""}`} onClick={() => setTab("album")}>
+            Альбом 📖
           </button>
           {canLegacy && (
             <button className={`tab ${current === "legacy" ? "tab--on" : ""}`} onClick={() => setTab("legacy")}>
@@ -77,6 +83,7 @@ export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
             />
           ))}
         {current === "trophies" && <Trophies runtime={runtime} />}
+        {current === "album" && <Album runtime={runtime} />}
         {current === "legacy" && <Legacy runtime={runtime} />}
       </div>
     </div>
@@ -155,6 +162,49 @@ function Trophies({ runtime }: { runtime: Runtime }) {
       {ACHIEVEMENTS.map((a) => (
         <AchievementRow key={a.id} a={a} game={g} />
       ))}
+    </div>
+  );
+}
+
+/** The album of finds: a set of three per plot; a full set makes the plot's goods dearer. */
+function Album({ runtime }: { runtime: Runtime }) {
+  const st = runtime.game.state;
+  const album = st.album;
+  return (
+    <div className="trophies">
+      <div className="ach-head">
+        Находки: <b>{album.size}</b> из {ALL_FINDS.length}
+        <div className="album__hint">Попадаются изредка, когда фермер сам собирает урожай. Полный набор участка — его товары дороже на {Math.round(SET_BONUS * 100)}%, навсегда и для всех поколений.</div>
+      </div>
+      {FIND_SETS.map((set) => {
+        const zone = zoneById(set.zone);
+        const done = setComplete(album, set);
+        const open = st.zones.has(set.zone);
+        return (
+          <div key={set.zone} className={`album-set ${done ? "album-set--done" : ""}`}>
+            <div className="album-set__head">
+              <span className="album-set__zone">
+                {zone.icon} {zone.name}
+              </span>
+              <span className="album-set__bonus">
+                {done ? `+${Math.round(SET_BONUS * 100)}% ` : open ? "" : "🔒 "}
+                {goodsOf(set.zone).map((i) => ITEMS[i].icon).join("")}
+              </span>
+            </div>
+            <div className="album-set__finds">
+              {set.finds.map((f) => {
+                const has = album.has(f.id);
+                return (
+                  <div key={f.id} className={`find ${has ? "find--has" : ""}`} title={has ? f.name : "Ещё не найдено"}>
+                    <span className="find__icon">{has ? f.icon : "?"}</span>
+                    <span className="find__name">{has ? f.name : "???"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

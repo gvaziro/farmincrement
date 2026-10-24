@@ -52,6 +52,14 @@ export function useKeyboard(game: Game) {
         const on = !(s.sound || s.music);
         updateSettings({ sound: on, music: on });
       } else if (e.code === "KeyF" && !e.repeat) toggleFullscreen();
+      else if (e.code === "Space") {
+        // The foreman's whistle — unless a button has the focus (Space presses it)
+        // or a window is open (the whistle button is hidden then).
+        const ui = useUI.getState();
+        if (t?.tagName === "BUTTON" || ui.panel || ui.settingsOpen || ui.news || ui.offline || ui.tabBlocked) return;
+        e.preventDefault();
+        if (!e.repeat) game.whistle();
+      }
     };
     const up = (e: KeyboardEvent) => {
       if (held.delete(e.code)) recompute();

@@ -153,7 +153,10 @@ export interface Depot {
   trucks: Truck[];
 }
 
-export type InteractKind = "machineIn" | "machineOut" | "market" | "depot" | "pad" | "farmhouse" | "trash";
+export type InteractKind = "machineIn" | "machineOut" | "market" | "depot" | "pad" | "farmhouse" | "trash" | "merchant";
+
+/** What a golden plant gives: a sales rush, a bag of money or every field ripe at once. */
+export type GoldenReward = "rush" | "money" | "bloom";
 
 export interface InteractZone {
   id: string;
@@ -205,6 +208,68 @@ export interface Stats {
   rainHarvest: number;
   /** Extra items from the autumn bonus. */
   bonusHarvest: number;
+  /** Golden plants collected. */
+  golden: number;
+  /** Merchant visits served in full. */
+  merchants: number;
+  /** Runaway animals caught. */
+  caught: number;
+  /** Times the foreman's whistle was blown. */
+  whistles: number;
+}
+
+/** The travelling merchant: parks his cart at a plot's edge and buys one kind of goods. */
+export interface Merchant {
+  zone: ZoneId;
+  x: number;
+  z: number;
+  item: ItemId;
+  need: number;
+  have: number;
+  /** Money he has paid so far. */
+  earned: number;
+  /** Seconds left before he gives up and drives on. */
+  t: number;
+  phase: "arrive" | "wait" | "leave";
+  /** 0 … 1: how far the cart has rolled in. */
+  anim: number;
+}
+
+export type RunawayKind = "chicken" | "cow" | "sheep";
+
+/** An animal that slipped out of its pen and wanders the farm, dodging the farmer. */
+export interface Runaway extends Actor {
+  kind: RunawayKind;
+  /** Where it got out — and where it trots back to. */
+  homeX: number;
+  homeZ: number;
+  /** Where it is wandering to, and how long it dawdles there. */
+  tx: number;
+  tz: number;
+  pause: number;
+  /** Seconds before it gets bored and goes home by itself. */
+  t: number;
+  /** Seconds it has been trying to get home (it hops there if stuck). */
+  homing: number;
+  /** Seconds it has been walking into a wall while wandering. */
+  stuck: number;
+}
+
+/** Little events "in between": golden plants, the merchant, runaways, the whistle. */
+export interface Surprises {
+  /** RNG state: events are reproducible in tests and survive a reload. */
+  seed: number;
+  goldenIn: number;
+  golden: { field: string; plant: number; t: number } | null;
+  /** Seconds of "gold rush" left: every sale pays double. */
+  rush: number;
+  merchantIn: number;
+  merchant: Merchant | null;
+  runawayIn: number;
+  runaway: Runaway | null;
+  /** Seconds the foreman's whistle still works / until it can be blown again. */
+  whistle: number;
+  whistleCd: number;
 }
 
 export interface GameState {
@@ -237,7 +302,13 @@ export interface GameState {
   /** Money earned by this generation — basis for prestige stars. */
   runEarned: number;
   /** Rolling estimate of automated income per second (for offline). */
-  autoIncome: { acc: number; window: number; rate: number };
+  autoIncome: {
+    acc: number;
+    window: number;
+    rate: number;
+    /** A gold rush or the whistle touched this window: it says nothing about the usual income. */
+    skip: boolean;
+  };
   /** Seconds of play since the farm was founded — drives the day/night cycle and the seasons. */
   dayClock: number;
   /** Current season (derived from dayClock, kept in sync by the tick). */
@@ -253,6 +324,9 @@ export interface GameState {
   /** Unlocked achievements (kept across generations). */
   achievements: Set<string>;
   achievementTimer: number;
+  /** Finds glued into the album (kept across generations). */
+  album: Set<string>;
+  surprises: Surprises;
   /** The farmer's hat (kept across generations). */
   hat: HatId;
   orderCooldown: number;
@@ -283,6 +357,13 @@ export type GameEvent =
   | { type: "weather"; kind: WeatherKind; from: WeatherKind }
   | { type: "achievement"; id: string }
   | { type: "perk"; perk: PerkId; level: number }
+  | { type: "golden"; state: "spawn" | "fade"; x: number; z: number }
+  | { type: "golden"; state: "collect"; reward: GoldenReward; value: number; x: number; z: number }
+  | { type: "rushEnd" }
+  | { type: "merchant"; state: "arrive" | "done" | "leave"; x: number; z: number; item: ItemId; need: number; earned?: number }
+  | { type: "runaway"; state: "escape" | "caught" | "home"; kind: RunawayKind; x: number; z: number; value?: number }
+  | { type: "find"; id: string; complete: boolean; x: number; z: number }
+  | { type: "whistle"; state: "start" | "end" }
   /** Autumn: a harvest gave one item extra. */
   | { type: "bonusHarvest"; item: ItemId; x: number; z: number; player: boolean };
 

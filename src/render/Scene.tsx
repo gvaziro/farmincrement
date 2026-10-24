@@ -23,6 +23,7 @@ import { Markers } from "./Markers";
 import { Pads } from "./Pads";
 import { Pond } from "./Pond";
 import { SeasonController, SeasonParticles } from "./Seasons";
+import { Surprises } from "./Surprises";
 import { WeatherFX } from "./Weather";
 
 export function Scene({ runtime, quality }: { runtime: Runtime; quality: Quality }) {
@@ -43,6 +44,7 @@ export function Scene({ runtime, quality }: { runtime: Runtime; quality: Quality
       <Pads runtime={runtime} />
       <Characters runtime={runtime} />
       <Customers runtime={runtime} />
+      <Surprises runtime={runtime} />
       <Items runtime={runtime} />
       <Effects />
       <SeasonParticles runtime={runtime} quality={quality} />

@@ -12,6 +12,7 @@ import {
 } from "../../data/balance";
 import { ITEMS, isSellable, type ItemId } from "../../data/items";
 import { DEPOT, MARKET, TRASH } from "../../data/layout";
+import { MERCHANT_MULT } from "../../data/surprises";
 import { inputSlot, outputSlot, pileSlot } from "../anchors";
 import type { Game } from "../Game";
 import { countOrderSale } from "./orders";
@@ -98,6 +99,9 @@ function processZone(game: Game, a: Actor, zone: InteractZone, dt: number, isPla
       case "trash":
         ok = isPlayer && dropIntoTrash(game, a, isPlayer);
         break;
+      case "merchant":
+        ok = isPlayer && giveToMerchant(game, a);
+        break;
     }
     if (!ok) {
       a.transferCd = 0;
@@ -156,7 +160,7 @@ function sellAtMarket(game: Game, a: Actor, isPlayer: boolean) {
   const item = a.stack[i];
   const from = game.stackSlotWorld(a, i);
   a.stack.splice(i, 1);
-  const value = game.sellValue(item);
+  const value = game.salePrice(item);
   game.earn(value, !isPlayer);
   game.state.stats.sold++;
   const tx = MARKET.x + (Math.random() - 0.5) * 2.4;
@@ -186,6 +190,31 @@ function dropIntoDepot(game: Game, a: Actor, isPlayer: boolean) {
   d.incoming++;
   game.flight(item, from.x, from.y, from.z, { kind: "depot", slot }, 0.32, 1.1);
   game.emit({ type: "drop", item, player: isPlayer, x: DEPOT.input.x, z: DEPOT.input.z });
+  return true;
+}
+
+/** The travelling merchant takes only his goods, at a premium, until he has enough. */
+function giveToMerchant(game: Game, a: Actor) {
+  const st = game.state;
+  const m = st.surprises.merchant;
+  if (!m || m.phase !== "wait") return false;
+  const i = topIndex(a, (item) => item === m.item);
+  if (i < 0) return false;
+  const from = game.stackSlotWorld(a, i);
+  a.stack.splice(i, 1);
+  const value = game.salePrice(m.item) * MERCHANT_MULT;
+  game.earn(value, false);
+  st.stats.sold++;
+  m.have++;
+  m.earned += value;
+  const tx = m.x + (Math.random() - 0.5) * 1.2;
+  game.flight(m.item, from.x, from.y, from.z, { kind: "point", x: tx, y: 1.15, z: m.z }, 0.34, 1.3, { type: "saleLand", value, x: tx, y: 1.4, z: m.z });
+  game.emit({ type: "sell", item: m.item, value, player: true });
+  if (m.have >= m.need) {
+    m.phase = "leave";
+    st.stats.merchants++;
+    game.emit({ type: "merchant", state: "done", x: m.x, z: m.z, item: m.item, need: m.need, earned: m.earned });
+  }
   return true;
 }
 

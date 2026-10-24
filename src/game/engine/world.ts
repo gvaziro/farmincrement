@@ -1,5 +1,6 @@
 /** Factories for runtime entities + derived world data (zones, colliders). */
 import { hashString, mulberry32, rect, type Rect } from "../core/math";
+import { FIRST_GOLDEN, FIRST_MERCHANT, FIRST_RUNAWAY } from "../data/surprises";
 import { PLAYER_STATS, statValue, WORKER_STATS } from "../data/balance";
 import { CROPS } from "../data/crops";
 import {
@@ -8,6 +9,7 @@ import {
   FIELDS,
   INITIAL_MACHINES,
   MARKET,
+  MERCHANT_CART,
   WATER_RECTS,
   standPoint,
   PADS,
@@ -35,11 +37,12 @@ import type {
   Machine,
   PadState,
   Player,
+  Surprises,
   Truck,
   Worker,
 } from "./types";
 
-function baseActor(id: string, x: number, z: number): Actor {
+export function baseActor(id: string, x: number, z: number): Actor {
   return {
     id,
     x,
@@ -168,6 +171,22 @@ export function createDepot(): Depot {
   return { storage: [], incoming: 0, truckLevel: 1, trucks: [createTruck(0)] };
 }
 
+/** No events yet: the first ones come a few minutes after the tutorial. */
+export function createSurprises(seed = 0x5eed2026): Surprises {
+  return {
+    seed,
+    goldenIn: FIRST_GOLDEN,
+    golden: null,
+    rush: 0,
+    merchantIn: FIRST_MERCHANT,
+    merchant: null,
+    runawayIn: FIRST_RUNAWAY,
+    runaway: null,
+    whistle: 0,
+    whistleCd: 0,
+  };
+}
+
 export function createPads(): PadState[] {
   return PADS.map((def) => ({ id: def.id, def, paid: 0, level: 1, done: false, visible: false, appearT: 0 }));
 }
@@ -191,17 +210,19 @@ export function createInitialState(): GameState {
     flights: [],
     interact: [],
     obstacles: [],
-    stats: { earned: 0, harvested: 0, sold: 0, produced: 0, purchases: 0, playTime: 0, orders: 0, fairs: 0, seasons: 0, nightFish: 0, rainHarvest: 0, bonusHarvest: 0 },
+    stats: { earned: 0, harvested: 0, sold: 0, produced: 0, purchases: 0, playTime: 0, orders: 0, fairs: 0, seasons: 0, nightFish: 0, rainHarvest: 0, bonusHarvest: 0, golden: 0, merchants: 0, caught: 0, whistles: 0 },
     tutorial: 0,
     prestige: { stars: 0, totalStars: 0, generations: 0 },
     legacy: {},
     runEarned: 0,
-    autoIncome: { acc: 0, window: 0, rate: 0 },
+    autoIncome: { acc: 0, window: 0, rate: 0, skip: false },
     order: null,
     lastFair: -1,
     made: {},
     achievements: new Set<string>(),
     achievementTimer: 0,
+    album: new Set<string>(),
+    surprises: createSurprises(),
     hat: "straw",
     dayClock: 0,
     season: seasonOf(0),
@@ -256,6 +277,8 @@ export function buildObstacles(state: GameState): Rect[] {
   obs.push(rect(FARMHOUSE.x, FARMHOUSE.z, FARMHOUSE.w, FARMHOUSE.d));
   if (state.depot) obs.push(rect(DEPOT.x, DEPOT.z, DEPOT.w, DEPOT.d));
   if (state.statue) obs.push(rect(STATUE.x, STATUE.z, STATUE.w, STATUE.d));
+  const merchant = state.surprises.merchant;
+  if (merchant) obs.push(rect(merchant.x, merchant.z, MERCHANT_CART.w, MERCHANT_CART.d));
   // The pond is always there; it only matters once its plot is open.
   obs.push(...WATER_RECTS);
   return obs;
@@ -272,6 +295,11 @@ export function buildInteractZones(state: GameState): InteractZone[] {
   zones.push({ id: "trash", kind: "trash", ref: "trash", rect: rect(TRASH.x, TRASH.z, TRASH.w, TRASH.d) });
   if (state.depot) {
     zones.push({ id: "depot", kind: "depot", ref: "depot", rect: rect(DEPOT.input.x, DEPOT.input.z, DEPOT.input.w, DEPOT.input.d) });
+  }
+  const merchant = state.surprises.merchant;
+  if (merchant) {
+    const drop = MERCHANT_CART.drop;
+    zones.push({ id: "merchant", kind: "merchant", ref: "merchant", rect: rect(merchant.x, merchant.z + drop.dz, drop.w, drop.d) });
   }
   for (const p of state.pads) {
     if (!p.visible) continue;

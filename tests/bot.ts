@@ -108,6 +108,8 @@ export class Bot {
     this.taskTime += dt;
     if (!this.task || this.taskDone()) this.pick();
     this.act();
+    // Like a player, blow the foreman's whistle whenever it is ready.
+    if (this.st.workers.length >= 2 && this.g.canWhistle()) this.g.whistle();
     const before = this.st.stats.purchases;
     this.g.tick(dt);
     for (const e of this.g.drainEvents()) {

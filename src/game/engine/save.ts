@@ -3,16 +3,19 @@
  * stored. Loading rebuilds the world from the layout and re-applies levels.
  */
 import { MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, OFFLINE_CAP_SECONDS, OFFLINE_EFFICIENCY, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, statMaxLevel } from "../data/balance";
+import { ALL_FINDS } from "../data/finds";
 import { isHatId } from "../data/hats";
 import { HOLIDAY_EFFICIENCY_PER_LEVEL, HOLIDAY_HOURS_PER_LEVEL, PERKS, isPerkId } from "../data/legacy";
-import { ITEM_IDS, type ItemId } from "../data/items";
+import { ITEM_IDS, isSellable, type ItemId } from "../data/items";
 import { ACHIEVEMENTS, unlockedHats } from "./achievements";
-import { FIELDS, MACHINES, ZONES, type ZoneId } from "../data/layout";
+import { FIELDS, MACHINES, MERCHANT_SPOTS, ZONES, type ZoneId } from "../data/layout";
+import { GOLDEN_LIFE, MERCHANT_EVERY, MERCHANT_WAIT, RUNAWAY_HOMES, RUNAWAY_LIFE, RUSH_TIME, WHISTLE_COOLDOWN, WHISTLE_TIME } from "../data/surprises";
+import { createRunaway, isRunawayKind } from "./systems/surprises";
 import { seasonOf } from "./seasons";
 import { currentWeather } from "./weather";
 import type { GameState, Order, Stats } from "./types";
 import { TUTORIAL_DONE } from "./tutorial";
-import { applyStats, createDepot, createField, createInitialState, createMachine, createTruck, createWorker } from "./world";
+import { applyStats, createDepot, createField, createInitialState, createMachine, createSurprises, createTruck, createWorker, isLand } from "./world";
 
 export const SAVE_KEY = "tiny-farm-empire/save";
 /** v2: prestige "seasons" became "generations" (seasons are the calendar now). */
@@ -44,6 +47,22 @@ export interface SaveData {
   achievements?: string[];
   hat?: string;
   made?: Partial<Record<string, number>>;
+  album?: string[];
+  surprises?: SavedSurprises;
+}
+
+/** Event timers and whatever event is going on (a leaving cart counts as gone). */
+interface SavedSurprises {
+  seed: number;
+  goldenIn: number;
+  golden: { field: string; plant: number; t: number } | null;
+  rush: number;
+  merchantIn: number;
+  merchant: { zone: string; item: string; need: number; have: number; earned: number; t: number } | null;
+  runawayIn: number;
+  runaway: { kind: string; x: number; z: number; t: number } | null;
+  whistle: number;
+  whistleCd: number;
 }
 
 export function serialize(st: GameState, now = Date.now()): SaveData {
@@ -82,12 +101,33 @@ export function serialize(st: GameState, now = Date.now()): SaveData {
     achievements: [...st.achievements],
     hat: st.hat,
     made: { ...st.made },
+    album: [...st.album],
+    surprises: saveSurprises(st),
     // Floor: rounding up could push a save into the next season.
     dayClock: Math.floor(st.dayClock * 100) / 100,
   };
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
+
+function saveSurprises(st: GameState): SavedSurprises {
+  const s = st.surprises;
+  const m = s.merchant && s.merchant.phase !== "leave" ? s.merchant : null;
+  const r = s.runaway;
+  return {
+    seed: s.seed,
+    goldenIn: round2(s.goldenIn),
+    golden: s.golden ? { ...s.golden, t: round2(s.golden.t) } : null,
+    rush: round2(s.rush),
+    // A cart already rolling away would otherwise be back at once.
+    merchantIn: s.merchant && !m ? MERCHANT_EVERY.min : round2(s.merchantIn),
+    merchant: m ? { zone: m.zone, item: m.item, need: m.need, have: m.have, earned: round2(m.earned), t: round2(m.t) } : null,
+    runawayIn: round2(s.runawayIn),
+    runaway: r ? { kind: r.kind, x: round2(r.x), z: round2(r.z), t: round2(r.t) } : null,
+    whistle: round2(s.whistle),
+    whistleCd: round2(s.whistleCd),
+  };
+}
 
 /**
  * Goods already loaded into a truck that has not driven off (and so has not
@@ -124,6 +164,8 @@ export function deserialize(raw: unknown): GameState {
   const known = new Set(ACHIEVEMENTS.map((a) => a.id));
   st.achievements = new Set(Array.isArray(d.achievements) ? d.achievements.filter((id) => known.has(id)) : []);
   st.hat = isHatId(d.hat) && unlockedHats(st.achievements).includes(d.hat) ? d.hat : "straw";
+  const finds = new Set(ALL_FINDS);
+  st.album = new Set(Array.isArray(d.album) ? d.album.filter((id) => finds.has(id)) : []);
   st.dayClock = num(d.dayClock, 0, 0);
   st.season = seasonOf(st.dayClock);
   st.weather = currentWeather(st.dayClock);
@@ -203,7 +245,47 @@ export function deserialize(raw: unknown): GameState {
   st.player.facing = num(d.player?.facing, st.player.facing);
   applyStats(st);
   st.player.stack = items(d.player?.stack).slice(0, st.player.capacity);
+  readSurprises(st, d.surprises);
   return st;
+}
+
+/** Events come back only where they still make sense (the field, plot or pen is there). */
+function readSurprises(st: GameState, v: unknown) {
+  const s = createSurprises();
+  st.surprises = s;
+  if (!v || typeof v !== "object") return;
+  const d = v as Partial<Record<keyof SavedSurprises, unknown>>;
+  s.seed = Math.floor(num(d.seed, s.seed, 0, 0xffffffff)) >>> 0;
+  s.goldenIn = num(d.goldenIn, s.goldenIn, 0, 3600);
+  s.rush = num(d.rush, 0, 0, RUSH_TIME);
+  s.merchantIn = num(d.merchantIn, s.merchantIn, 0, 3600);
+  s.runawayIn = num(d.runawayIn, s.runawayIn, 0, 3600);
+  s.whistle = num(d.whistle, 0, 0, WHISTLE_TIME);
+  s.whistleCd = num(d.whistleCd, 0, 0, WHISTLE_COOLDOWN);
+
+  const g = d.golden as Partial<SavedSurprises["golden"] & object> | null | undefined;
+  const field = g && typeof g === "object" ? st.fields.find((f) => f.id === g.field) : undefined;
+  const plant = Math.floor(num(g?.plant, -1));
+  if (field && plant >= 0 && plant < field.plants.length) s.golden = { field: field.id, plant, t: num(g?.t, GOLDEN_LIFE, 0, GOLDEN_LIFE) };
+
+  const m = d.merchant as Partial<SavedSurprises["merchant"] & object> | null | undefined;
+  const zone = m && typeof m === "object" ? (m.zone as ZoneId) : undefined;
+  const spot = zone ? MERCHANT_SPOTS[zone] : undefined;
+  if (m && zone && spot && st.zones.has(zone) && ITEM_SET.has(m.item as string) && isSellable(m.item as ItemId)) {
+    const need = Math.floor(num(m.need, 1, 1, 999));
+    const have = Math.floor(num(m.have, 0, 0, need - 1));
+    s.merchant = { zone, x: spot.x, z: spot.z, item: m.item as ItemId, need, have, earned: num(m.earned, 0, 0), t: num(m.t, MERCHANT_WAIT, 0, MERCHANT_WAIT), phase: "wait", anim: 1 };
+  }
+
+  const r = d.runaway as Partial<SavedSurprises["runaway"] & object> | null | undefined;
+  const pen = r && typeof r === "object" && isRunawayKind(r.kind) ? st.machines.find((x) => x.id === RUNAWAY_HOMES[r.kind as keyof typeof RUNAWAY_HOMES]) : undefined;
+  if (r && pen && isRunawayKind(r.kind)) {
+    const x = num(r.x, NaN);
+    const z = num(r.z, NaN);
+    const runaway = isLand(st, x, z, 0.4) ? createRunaway(r.kind, pen, x, z) : createRunaway(r.kind, pen);
+    runaway.t = num(r.t, RUNAWAY_LIFE, 0, RUNAWAY_LIFE);
+    s.runaway = runaway;
+  }
 }
 
 /** Upgrade older save formats here. Returns null for unusable data. */

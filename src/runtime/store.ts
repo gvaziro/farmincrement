@@ -36,6 +36,17 @@ export interface GoalInfo {
   cost: number;
 }
 
+/** Little events for the HUD, in whole seconds. */
+export interface SurpriseUI {
+  /** Gold rush seconds left. */
+  rush: number;
+  /** Whistle: seconds it still sounds, seconds until it can be blown again. */
+  whistle: number;
+  whistleCd: number;
+  /** Anybody to whistle at (the button shows from the first hire). */
+  workers: boolean;
+}
+
 export interface UIState {
   ready: boolean;
   money: number;
@@ -62,6 +73,9 @@ export interface UIState {
   news: boolean;
   /** Number of unlocked achievements. */
   trophies: number;
+  /** Finds in the album. */
+  album: number;
+  surprise: SurpriseUI;
   /** Bumped on every UI sync so panels can re-read engine data. */
   tick: number;
   /** Mirrors game.state.structure — 3D components re-render on it. */
@@ -122,6 +136,8 @@ export const useUI = create<UIState>(() => ({
   hat: "straw",
   generation: 0,
   trophies: 0,
+  album: 0,
+  surprise: { rush: 0, whistle: 0, whistleCd: 0, workers: false },
   tabBlocked: null,
   news: false,
   clock: { day: 1, phase: "day", season: "spring", weather: "clear", rainbow: false },

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatDuration, formatMoney } from "@/game/core/format";
+import { ALL_FINDS } from "@/game/data/finds";
 import type { Runtime } from "@/runtime/runtime";
 import { updateSettings, useUI, type Quality, type Settings } from "@/runtime/store";
 import { canFullscreen, toggleFullscreen } from "./fullscreen";
@@ -100,7 +101,7 @@ function GameTab() {
       {!touch && (
         <p className="keys">
           <kbd>WASD</kbd> бег · <kbd>+</kbd>
-          <kbd>−</kbd> масштаб · <kbd>M</kbd> звук · <kbd>F</kbd> полный экран · <kbd>Esc</kbd> закрыть окно
+          <kbd>−</kbd> масштаб · <kbd>Пробел</kbd> свисток · <kbd>M</kbd> звук · <kbd>F</kbd> полный экран · <kbd>Esc</kbd> закрыть окно
         </p>
       )}
     </>
@@ -160,6 +161,24 @@ function StatsTab({ runtime }: { runtime: Runtime }) {
       <div>
         <span>Сезонов прожито</span>
         <b>{st.stats.seasons}</b>
+      </div>
+      <div>
+        <span>Золотых растений</span>
+        <b>{st.stats.golden}</b>
+      </div>
+      <div>
+        <span>Торговцев обслужено</span>
+        <b>{st.stats.merchants}</b>
+      </div>
+      <div>
+        <span>Беглецов поймано</span>
+        <b>{st.stats.caught}</b>
+      </div>
+      <div>
+        <span>Находок в альбоме</span>
+        <b>
+          {st.album.size} / {ALL_FINDS.length}
+        </b>
       </div>
       {st.prestige.generations > 0 && (
         <div>

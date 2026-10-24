@@ -1555,3 +1555,289 @@ button {
   border-bottom-color: #b9bcb3;
   color: #8a9080;
 }
+
+/* ── little events: gold rush, the whistle, edge arrows ─────────────── */
+.money {
+  position: relative;
+}
+
+.money--rush {
+  box-shadow: var(--shadow), 0 0 0 3px rgba(255, 204, 51, 0.95), 0 0 22px rgba(255, 204, 51, 0.85);
+}
+
+.money__rush {
+  position: absolute;
+  right: -8px;
+  bottom: -13px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: linear-gradient(#fff3b0, #ffcc33);
+  color: #7a4a00;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-shadow: none;
+  white-space: nowrap;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.15), 0 0 12px rgba(255, 204, 51, 0.9);
+  animation: rush-glow 1.2s ease-in-out infinite;
+}
+
+@keyframes rush-glow {
+  50% {
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.15), 0 0 22px rgba(255, 214, 80, 1);
+  }
+}
+
+.whistle {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(22px, env(safe-area-inset-bottom));
+  width: 78px;
+  height: 78px;
+  padding: 5px;
+  border: none;
+  border-radius: 50%;
+  background: conic-gradient(var(--gold) calc(var(--p, 1) * 360deg), rgba(255, 255, 255, 0.35) 0);
+  box-shadow: var(--shadow);
+  font-family: var(--font);
+  transition: transform 0.08s;
+}
+
+.whistle:active:not(:disabled) {
+  transform: translateY(3px);
+}
+
+.whistle__face {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.whistle__icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.whistle__label {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.whistle:disabled .whistle__face {
+  background: rgba(235, 235, 230, 0.9);
+}
+
+.whistle:disabled .whistle__icon {
+  filter: grayscale(0.8);
+  opacity: 0.6;
+}
+
+.whistle--ready {
+  animation: whistle-ready 2.4s ease-in-out infinite;
+}
+
+/* While it sounds the button is disabled (cooldown) but must look alive. */
+.whistle.whistle--active .whistle__face {
+  background: linear-gradient(#fff6c2, #ffe066);
+}
+
+.whistle.whistle--active .whistle__icon {
+  filter: none;
+  opacity: 1;
+  animation: wiggle-icon 0.3s ease-in-out infinite;
+}
+
+@keyframes whistle-ready {
+  0%,
+  80%,
+  100% {
+    transform: scale(1);
+  }
+  88% {
+    transform: scale(1.08) rotate(-4deg);
+  }
+  94% {
+    transform: scale(1.04) rotate(4deg);
+  }
+}
+
+@keyframes wiggle-icon {
+  50% {
+    transform: rotate(-12deg) scale(1.1);
+  }
+}
+
+.edge-arrows {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.edge-arrow {
+  --arrow: var(--gold-dark);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 50px;
+  height: 50px;
+  margin: -25px 0 0 -25px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  border: 3px solid var(--arrow);
+  box-shadow: 0 4px 12px rgba(30, 50, 20, 0.3);
+  will-change: transform;
+}
+
+.edge-arrow--golden {
+  background: radial-gradient(circle at 40% 35%, #fff8d0, #ffd84a);
+}
+
+.edge-arrow--merchant {
+  --arrow: #7b4fa8;
+}
+
+.edge-arrow--runaway {
+  --arrow: #e0533d;
+}
+
+.edge-arrow__icon {
+  font-size: 25px;
+  line-height: 1;
+  animation: edge-bob 0.9s ease-in-out infinite;
+}
+
+.edge-arrow__tip {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  border-left: 13px solid var(--arrow);
+  transform-origin: 0 0;
+  transform: rotate(var(--angle, 0rad)) translate(27px, -9px);
+}
+
+.edge-arrow__dist {
+  position: absolute;
+  top: 100%;
+  margin-top: 3px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: rgba(32, 52, 22, 0.7);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+@keyframes edge-bob {
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+@media (max-width: 520px) {
+  .money__rush {
+    font-size: 12px;
+  }
+  .whistle {
+    width: 66px;
+    height: 66px;
+  }
+  .whistle__icon {
+    font-size: 24px;
+  }
+}
+
+/* ── the album of finds ─────────────────────────────────────────────── */
+.album__hint {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7560;
+}
+
+.album-set {
+  padding: 8px 10px 10px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.album-set--done {
+  background: linear-gradient(#fffbe6, #fff0b8);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.05), inset 0 0 0 2px rgba(224, 164, 0, 0.45);
+}
+
+.album-set__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.album-set__zone {
+  font-weight: 900;
+  font-size: 15px;
+}
+
+.album-set__bonus {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--gold-dark);
+  white-space: nowrap;
+}
+
+.album-set__finds {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.find {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border-radius: 12px;
+  background: #f3f3ef;
+  border: 2px dashed rgba(0, 0, 0, 0.12);
+}
+
+.find--has {
+  background: #fff;
+  border: 2px solid rgba(224, 164, 0, 0.5);
+}
+
+.find__icon {
+  font-size: 26px;
+  line-height: 1.1;
+  color: #b8bcaf;
+  font-weight: 900;
+}
+
+.find__name {
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  color: #4a5a3a;
+}
+
+.find:not(.find--has) .find__name {
+  color: #9aa08f;
+}

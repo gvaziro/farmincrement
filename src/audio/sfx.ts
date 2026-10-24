@@ -7,7 +7,26 @@ import type { SeasonId } from "@/game/engine/seasons";
 import type { WeatherKind } from "@/game/engine/weather";
 import { Music } from "./music";
 
-type SoundName = "pop" | "drop" | "pick" | "coin" | "tick" | "purchase" | "level" | "full" | "whoosh" | "ding" | "cash" | "season";
+type SoundName =
+  | "pop"
+  | "drop"
+  | "pick"
+  | "coin"
+  | "tick"
+  | "purchase"
+  | "level"
+  | "full"
+  | "whoosh"
+  | "ding"
+  | "cash"
+  | "season"
+  | "golden"
+  | "find"
+  | "bell"
+  | "whistle"
+  | "cluck"
+  | "moo"
+  | "baa";
 
 const MIN_GAP: Record<SoundName, number> = {
   pop: 0.035,
@@ -22,6 +41,13 @@ const MIN_GAP: Record<SoundName, number> = {
   ding: 0.2,
   cash: 0.15,
   season: 1,
+  golden: 0.4,
+  find: 0.4,
+  bell: 0.6,
+  whistle: 0.6,
+  cluck: 0.5,
+  moo: 0.8,
+  baa: 0.7,
 };
 
 class Sfx {
@@ -290,7 +316,91 @@ class Sfx {
         [659.25, 783.99, 987.77, 1318.5, 1567.98].forEach((n, i) => this.tone("sine", n, n, 0.9, 0.07, i * 0.11));
         this.burst(0.9, 0.04, 5200, 0.3);
         break;
+      case "golden":
+        // A shimmering run up (softer when the plant just appeared).
+        [1318.5, 1568, 1975.5, 2637].forEach((n, i) => this.tone("sine", n, n, 0.38, 0.065 * intensity, i * 0.06));
+        this.burst(0.5, 0.035 * intensity, 6400, 0.05);
+        break;
+      case "find":
+        [1046.5, 1318.5, 1568, 2093].forEach((n, i) => this.tone("triangle", n, n, 0.3, 0.08, i * 0.08));
+        this.tone("sine", 3136, 3136, 0.7, 0.04, 0.34);
+        break;
+      case "bell":
+        // Ding-ding: the merchant's hand bell.
+        for (const d of [0, 0.22]) {
+          this.tone("sine", 1760, 1760, 0.7, 0.08, d);
+          this.tone("sine", 4400, 4400, 0.35, 0.025, d);
+        }
+        break;
+      case "whistle":
+        this.whistleTone(0);
+        this.whistleTone(0.3);
+        break;
+      case "cluck":
+        [0, 0.12, 0.21].forEach((d, i) => this.tone("square", 640 - i * 50, 380, 0.07, 0.035, d));
+        break;
+      case "moo":
+        this.voice(210, 150, 0.8, 0.08, 650);
+        break;
+      case "baa":
+        this.voice(440, 390, 0.55, 0.05, 1500, 15);
+        break;
     }
+  }
+
+  /** A pea whistle: a high sine with a fast trill, sliding up. */
+  private whistleTone(delay: number) {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + delay;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(2100, t);
+    osc.frequency.linearRampToValueAtTime(2500, t + 0.2);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 38;
+    const depth = ctx.createGain();
+    depth.gain.value = 90;
+    lfo.connect(depth).connect(osc.frequency);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.06, t + 0.02);
+    g.gain.setValueAtTime(0.06, t + 0.18);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    osc.connect(g).connect(this.sfxBus!);
+    osc.start(t);
+    lfo.start(t);
+    osc.stop(t + 0.27);
+    lfo.stop(t + 0.27);
+  }
+
+  /** An animal's voice: a low-passed sawtooth gliding down, bleating if `tremolo` is set. */
+  private voice(f0: number, f1: number, dur: number, gain: number, cutoff: number, tremolo = 0) {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = cutoff;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.06);
+    g.gain.setValueAtTime(gain, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    if (tremolo) {
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = tremolo;
+      const d = ctx.createGain();
+      d.gain.value = gain * 0.6;
+      lfo.connect(d).connect(g.gain);
+      lfo.start(t);
+      lfo.stop(t + dur + 0.05);
+    }
+    osc.connect(lp).connect(g).connect(this.sfxBus!);
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
   }
 
   private tone(type: OscillatorType, f0: number, f1: number, dur: number, gain: number, delay = 0) {

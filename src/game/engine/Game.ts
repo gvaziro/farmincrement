@@ -3,10 +3,12 @@
  * `game.state` every frame; the UI listens to drained events.
  */
 import { MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, machineUpgradeCost, marketPriceMult, marketUpgradeCost, starsForEarnings, statCost, statMaxLevel, truckUpgradeCost, type PlayerStatId, type WorkerStatId } from "../data/balance";
+import { albumMult } from "../data/finds";
 import { ITEMS, type ItemId } from "../data/items";
 import { fieldById, machineById, machineUpgradeBase, zoneById, type PadDef } from "../data/layout";
 import { isHatId, type HatId } from "../data/hats";
 import { FAME_PER_LEVEL, LANDS_ORDER, PERKS, TREASURY_MONEY, WORKSHOP_PER_LEVEL, type PerkId } from "../data/legacy";
+import { RUSH_MULT } from "../data/surprises";
 import { unlockedHats, updateAchievements } from "./achievements";
 import { inputSlot, localToWorld, outputSlot, stackSlotLocal } from "./anchors";
 import { isNight } from "./daycycle";
@@ -19,6 +21,7 @@ import { depotSlot, updateInteractions } from "./systems/interact";
 import { updateMachines } from "./systems/machines";
 import { moveActor } from "./systems/movement";
 import { updateOrders } from "./systems/orders";
+import { blowWhistle, canWhistle, surpriseTargets, updateSurprises } from "./systems/surprises";
 import { updateWorkers } from "./systems/workers";
 import { TUTORIAL_DONE, TUTORIAL_PADS_STEP, updateTutorial } from "./tutorial";
 import type { Actor, Anchor, FlightItem, GameEvent, GameState, InteractZone, Machine, PadState } from "./types";
@@ -30,6 +33,7 @@ import {
   createField,
   createInitialState,
   createMachine,
+  createSurprises,
   createTruck,
   createWorker,
   isLand,
@@ -144,6 +148,7 @@ export class Game {
     updateMachines(this, dt);
     updateDepot(this, dt);
     updateOrders(this, dt);
+    updateSurprises(this, dt);
     this.updateFlights(dt);
     for (const pad of st.pads) if (pad.visible) pad.appearT += dt;
     updateTutorial(this);
@@ -152,13 +157,20 @@ export class Game {
   }
 
   private updateIncome(dt: number) {
-    const ai = this.state.autoIncome;
+    const st = this.state;
+    const ai = st.autoIncome;
+    // The estimate pays offline income for hours (and sizes event rewards):
+    // a window boosted by a gold rush or the whistle does not count.
+    if (st.surprises.rush > 0 || st.surprises.whistle > 0) ai.skip = true;
     ai.window += dt;
     if (ai.window >= 15) {
-      const r = ai.acc / ai.window;
-      ai.rate = ai.rate === 0 ? r : ai.rate * 0.6 + r * 0.4;
+      if (!ai.skip) {
+        const r = ai.acc / ai.window;
+        ai.rate = ai.rate === 0 ? r : ai.rate * 0.6 + r * 0.4;
+      }
       ai.acc = 0;
       ai.window = 0;
+      ai.skip = false;
     }
   }
 
@@ -281,8 +293,13 @@ export class Game {
   priceMult() {
     return marketPriceMult(this.state.marketLevel) * (1 + this.perk("fame") * FAME_PER_LEVEL);
   }
+  /** What an item is worth: market level, fame, the season's demand and the album's sets. */
   sellValue(item: ItemId) {
-    return ITEMS[item].price * this.priceMult() * seasonDemand(this.state.season, item);
+    return ITEMS[item].price * this.priceMult() * seasonDemand(this.state.season, item) * albumMult(this.state.album, item);
+  }
+  /** What selling it pays right now (a gold rush doubles every sale). */
+  salePrice(item: ItemId) {
+    return this.sellValue(item) * (this.state.surprises.rush > 0 ? RUSH_MULT : 1);
   }
   earn(value: number, automated: boolean) {
     const st = this.state;
@@ -478,9 +495,11 @@ export class Game {
     next.legacy = { ...old.legacy };
     next.stats = { ...old.stats };
     next.made = { ...old.made };
-    // Trophies and the hat are the family's.
+    // Trophies, the album and the hat are the family's.
     next.achievements = old.achievements;
+    next.album = old.album;
     next.hat = old.hat;
+    next.surprises = createSurprises(old.surprises.seed);
     next.tutorial = TUTORIAL_DONE;
     // Keep the counter monotonic so views always notice the swap.
     next.structure = old.structure + 1;
@@ -510,6 +529,19 @@ export class Game {
       if (pad) pad.done = true;
     }
     applyStats(st);
+  }
+
+  // ── the foreman's whistle ─────────────────────────────────────────────
+  canWhistle() {
+    return canWhistle(this.state);
+  }
+  /** Workers run twice as fast for a while (UI action). */
+  whistle() {
+    return blowWhistle(this);
+  }
+  /** Golden plant, merchant, runaway: where they are (for the HUD's edge arrows). */
+  surpriseTargets() {
+    return surpriseTargets(this.state);
   }
 
   // ── wardrobe ──────────────────────────────────────────────────────────
