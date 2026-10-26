@@ -61,9 +61,15 @@ class Sfx {
   soundOn = true;
   musicOn = true;
   private volume = 1;
+  /** Silenced on purpose: the tab is hidden or another tab is playing. */
+  private held = false;
 
-  /** Must be called from a user gesture (browser autoplay policy). */
+  /**
+   * Called on every user gesture: browsers let sound start only inside one.
+   * Does nothing once it plays, or while it is held.
+   */
   unlock() {
+    if (this.held) return;
     if (!this.ctx) {
       const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!Ctx) return;
@@ -78,7 +84,16 @@ class Sfx {
       this.music.attach(this.ctx);
       this.music.setEnabled(this.musicOn);
     }
-    if (this.ctx.state === "suspended") void this.ctx.resume();
+    const ctx = this.ctx;
+    // "suspended" until a gesture lets it start; iOS also parks it "interrupted"
+    // (a call, Siri, the app sent to the background).
+    if (ctx.state === "running" || ctx.state === "closed") return;
+    ctx.resume().catch(() => {});
+    // Older iOS only starts the sound once something plays inside the gesture.
+    const blank = ctx.createBufferSource();
+    blank.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+    blank.connect(ctx.destination);
+    blank.start();
   }
 
   setSound(on: boolean) {
@@ -249,10 +264,12 @@ class Sfx {
     }
   }
 
-  suspend(hidden: boolean) {
+  /** Hold the sound while the tab is hidden or blocked by another tab. */
+  suspend(hold: boolean) {
+    this.held = hold;
     if (!this.ctx) return;
-    if (hidden) void this.ctx.suspend();
-    else void this.ctx.resume();
+    if (hold) this.ctx.suspend().catch(() => {});
+    else this.ctx.resume().catch(() => {});
   }
 
   play(name: SoundName, intensity = 1) {
@@ -440,3 +457,22 @@ class Sfx {
 }
 
 export const sfx = new Sfx();
+
+/**
+ * Events that may start the sound. On touch screens only the end of a tap
+ * counts as a gesture (pointerup / touchend) — pointerdown does not.
+ */
+const GESTURES = ["pointerdown", "pointerup", "touchend", "click", "keydown"] as const;
+
+/**
+ * Unlock the sound on every user gesture; returns the cleanup. Capture phase,
+ * so panels that stop the event can't swallow it.
+ */
+export function unlockOnGestures(target: EventTarget) {
+  const unlock = () => sfx.unlock();
+  const capture = { capture: true };
+  for (const type of GESTURES) target.addEventListener(type, unlock, capture);
+  return () => {
+    for (const type of GESTURES) target.removeEventListener(type, unlock, capture);
+  };
+}

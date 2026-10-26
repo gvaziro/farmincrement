@@ -3,7 +3,7 @@
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useState } from "react";
 import { PCFShadowMap } from "three";
-import { sfx } from "@/audio/sfx";
+import { sfx, unlockOnGestures } from "@/audio/sfx";
 import LoadingScreen from "@/components/LoadingScreen";
 import { renderItemIcons } from "@/render/itemIcons";
 import { Scene } from "@/render/Scene";
@@ -53,10 +53,9 @@ export default function GameRoot() {
     sfx.setVolume(soundVolume, musicVolume);
   }, [soundVolume, musicVolume]);
 
+  useEffect(() => unlockOnGestures(window), []);
+
   useEffect(() => {
-    const unlock = () => sfx.unlock();
-    window.addEventListener("pointerdown", unlock);
-    window.addEventListener("keydown", unlock);
     const onVis = () => runtime.visibility(document.hidden);
     const onUnload = () => runtime.unload();
     const onShow = (e: PageTransitionEvent) => runtime.pageShow(e.persisted);
@@ -65,8 +64,6 @@ export default function GameRoot() {
     window.addEventListener("beforeunload", onUnload);
     window.addEventListener("pageshow", onShow);
     return () => {
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pagehide", onUnload);
       window.removeEventListener("beforeunload", onUnload);
