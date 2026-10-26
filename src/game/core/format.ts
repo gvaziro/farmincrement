@@ -27,6 +27,15 @@ export function formatDuration(seconds: number): string {
   return `${sec} с`;
 }
 
+/** A stopwatch: 95 → "1:35", 7262 → "2:01:02" (records, the chronicle). */
+export function formatClock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = String(s % 60).padStart(2, "0");
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+}
+
 /** Russian plural: plural(5, ["предмет", "предмета", "предметов"]) */
 export function plural(n: number, forms: [string, string, string]): string {
   const a = Math.abs(n) % 100;

@@ -3,7 +3,8 @@
  * earnings, routing engine events to audio, effects and the HUD store.
  */
 import { sfx } from "@/audio/sfx";
-import { formatMoney } from "@/game/core/format";
+import { formatClock, formatMoney } from "@/game/core/format";
+import { CHALLENGES, type ChallengeId } from "@/game/data/challenges";
 import { ITEMS, type ItemId } from "@/game/data/items";
 import { MARKET, ZONE_D, ZONE_W, ZONES, zoneById } from "@/game/data/layout";
 import { dayNumber, dayPhase, nightFactor, timeOfDay } from "@/game/engine/daycycle";
@@ -13,12 +14,14 @@ import { HATS } from "@/game/data/hats";
 import { PERKS } from "@/game/data/legacy";
 import { MERCHANT_MULT, RUSH_MULT, RUSH_TIME } from "@/game/data/surprises";
 import { achievementById } from "@/game/engine/achievements";
+import { frozenSeason } from "@/game/engine/challenges";
 import { SEASONS } from "@/game/engine/seasons";
 import { WEATHER_NAMES, rainbowAt, weatherAt } from "@/game/engine/weather";
 import { SAVE_KEY, deserialize, isFutureSave, offlineEarnings, serialize, type SaveData } from "@/game/engine/save";
 import { encodeSave } from "@/game/engine/saveCode";
 import { TUTORIAL, tutorialText } from "@/game/engine/tutorial";
 import type { GameEvent, RunawayKind } from "@/game/engine/types";
+import { whistleTimes } from "@/game/engine/systems/surprises";
 import { fx } from "@/render/fx";
 import { NEWS_VERSION } from "@/ui/news";
 import { addBackup, migrateLegacyBackups, type Backup, type BackupReason } from "./backups";
@@ -179,7 +182,7 @@ export class Runtime {
     const ui = useUI.getState();
     const st = this.game.state;
     const visual = ui.settings.seasons;
-    const w = weatherAt(st.dayClock);
+    const w = weatherAt(st.dayClock, frozenSeason(st));
     sfx.ambient(
       dt,
       ui.settings.dayNight ? nightFactor(timeOfDay(st.dayClock)) : 0,
@@ -304,9 +307,9 @@ export class Runtime {
     window.location.reload();
   }
 
-  prestige() {
+  prestige(challenges: ChallengeId[] = []) {
     this.backup("prestige");
-    if (!this.game.prestige()) return;
+    if (!this.game.prestige(challenges)) return;
     fx.reset();
     for (const e of this.game.drainEvents()) this.handle(e);
     this.save();
@@ -329,10 +332,12 @@ export class Runtime {
     const phase = dayPhase(timeOfDay(st.dayClock));
     const season = st.season;
     const weather = st.weather;
-    const rainbow = rainbowAt(st.dayClock) > 0.3;
+    const rainbow = rainbowAt(st.dayClock, frozenSeason(st)) > 0.3;
     const s = st.surprises;
-    const surprise = { rush: Math.ceil(s.rush), whistle: Math.ceil(s.whistle), whistleCd: Math.ceil(s.whistleCd), workers: st.workers.length > 0 };
+    const wt = whistleTimes(g);
+    const surprise = { rush: Math.ceil(s.rush), whistle: Math.ceil(s.whistle), whistleCd: Math.ceil(s.whistleCd), sound: wt.sound, rest: wt.rest, workers: st.workers.length > 0 };
     const su = ui.surprise;
+    const challengeIcons = st.challenges.map((id) => CHALLENGES[id].icon).join("");
     const changed =
       ui.money !== money ||
       ui.hint?.text !== hint?.text ||
@@ -351,12 +356,15 @@ export class Runtime {
       ui.generation !== st.prestige.generations ||
       ui.trophies !== st.achievements.size ||
       ui.album !== st.album.size ||
+      ui.challengeIcons !== challengeIcons ||
       su.rush !== surprise.rush ||
       su.whistle !== surprise.whistle ||
       su.whistleCd !== surprise.whistleCd ||
+      su.sound !== surprise.sound ||
+      su.rest !== surprise.rest ||
       su.workers !== surprise.workers;
     if (changed || ui.panel) {
-      useUI.setState({ money, hint, goal, stars: st.prestige.stars, statue: st.statue, carry: [carried, cap], clock: { day, phase, season, weather, rainbow }, hat: st.hat, generation: st.prestige.generations, trophies: st.achievements.size, album: st.album.size, surprise, tick: ui.tick + 1 });
+      useUI.setState({ money, hint, goal, stars: st.prestige.stars, statue: st.statue, carry: [carried, cap], clock: { day, phase, season, weather, rainbow }, hat: st.hat, generation: st.prestige.generations, trophies: st.achievements.size, album: st.album.size, challengeIcons, surprise, tick: ui.tick + 1 });
     }
   }
 
@@ -595,6 +603,15 @@ export class Runtime {
         fx.text(f.find.icon, e.x, 1.8, e.z, "big");
         sfx.play("find");
         vibrate(20);
+        break;
+      }
+      case "record": {
+        const what = e.key === "statue" ? "Золотая статуя" : zoneById(e.key as Parameters<typeof zoneById>[0]).name;
+        const gain = e.prev - e.time;
+        pushToast(`${what} за ${formatClock(e.time)} — рекорд семьи! ${gain >= 1 ? `Быстрее на ${formatClock(gain)}` : "На волосок быстрее"}`, "⏱️");
+        const p = this.game.state.player;
+        fx.confetti(p.x, 1.6, p.z, 40, GOLD_CONFETTI);
+        sfx.play("level");
         break;
       }
       case "whistle":

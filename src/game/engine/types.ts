@@ -1,5 +1,6 @@
 import type { Rect } from "../core/math";
 import type { PlayerStatId, WorkerStatId } from "../data/balance";
+import type { ChallengeId } from "../data/challenges";
 import type { CropDef } from "../data/crops";
 import type { HatId } from "../data/hats";
 import type { PerkId } from "../data/legacy";
@@ -216,6 +217,20 @@ export interface Stats {
   caught: number;
   /** Times the foreman's whistle was blown. */
   whistles: number;
+  /** Family records beaten (a plot or the statue sooner than ever). */
+  records: number;
+}
+
+/** One generation in the family chronicle. */
+export interface ChronicleEntry {
+  /** 1 = the founders. */
+  gen: number;
+  /** Seconds of play to the Golden Statue. */
+  statue: number;
+  /** Seconds the generation farmed before handing over. */
+  played: number;
+  stars: number;
+  challenges: ChallengeId[];
 }
 
 /** The travelling merchant: parks his cart at a plot's edge and buys one kind of goods. */
@@ -327,6 +342,14 @@ export interface GameState {
   /** Finds glued into the album (kept across generations). */
   album: Set<string>;
   surprises: Surprises;
+  /** The challenges this generation took on. */
+  challenges: ChallengeId[];
+  /** When (dayClock seconds) this generation bought each plot and the statue. */
+  genTimes: Partial<Record<string, number>>;
+  /** The family's best times for the same (kept across generations). */
+  records: Partial<Record<string, number>>;
+  /** Every generation that handed the farm over (kept across generations). */
+  chronicle: ChronicleEntry[];
   /** The farmer's hat (kept across generations). */
   hat: HatId;
   orderCooldown: number;
@@ -364,6 +387,8 @@ export type GameEvent =
   | { type: "runaway"; state: "escape" | "caught" | "home"; kind: RunawayKind; x: number; z: number; value?: number }
   | { type: "find"; id: string; complete: boolean; x: number; z: number }
   | { type: "whistle"; state: "start" | "end" }
+  /** A plot (zone id) or the statue ("statue") came sooner than the family record. */
+  | { type: "record"; key: string; time: number; prev: number }
   /** Autumn: a harvest gave one item extra. */
   | { type: "bonusHarvest"; item: ItemId; x: number; z: number; player: boolean };
 

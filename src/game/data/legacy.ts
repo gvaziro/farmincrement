@@ -5,7 +5,7 @@
  */
 import { formatMoney } from "../core/format";
 
-export const PERK_IDS = ["fame", "treasury", "hands", "crew", "soil", "workshop", "lands", "holiday", "fair"] as const;
+export const PERK_IDS = ["fame", "treasury", "hands", "crew", "soil", "workshop", "lands", "holiday", "fair", "golden", "voice", "ancestors"] as const;
 export type PerkId = (typeof PERK_IDS)[number];
 
 export interface PerkDef {
@@ -30,6 +30,11 @@ export const WORKSHOP_PER_LEVEL = 0.1;
 export const FAIR_PER_LEVEL = 0.25;
 export const HOLIDAY_HOURS_PER_LEVEL = 2;
 export const HOLIDAY_EFFICIENCY_PER_LEVEL = 0.05;
+/** "Золотые руки": golden plants come this much more often per level. */
+export const GOLDEN_PER_LEVEL = 0.2;
+/** "Зычный голос": the whistle sounds longer and rests less, per level (seconds). */
+export const VOICE_TIME_PER_LEVEL = 6;
+export const VOICE_REST_PER_LEVEL = 15;
 /** Money a new generation starts with, by "family treasury" level. */
 export const TREASURY_MONEY = [0, 1_000, 10_000, 100_000, 1_000_000] as const;
 /** Plots a new generation already owns, by "family lands" level (in order). */
@@ -112,6 +117,30 @@ export const PERKS: Record<PerkId, PerkDef> = {
     max: 4,
     cost: series(2, 2),
     effect: (l) => `награды за заказы и ярмарки +${Math.round(l * FAIR_PER_LEVEL * 100)}%`,
+  },
+  golden: {
+    id: "golden",
+    name: "Золотые руки",
+    icon: "✨",
+    max: 5,
+    cost: series(4, 1.8),
+    effect: (l) => `золотые растения появляются на ${Math.round(l * GOLDEN_PER_LEVEL * 100)}% чаще`,
+  },
+  voice: {
+    id: "voice",
+    name: "Зычный голос",
+    icon: "📯",
+    max: 5,
+    cost: series(3, 1.8),
+    effect: (l) => `свисток звучит +${l * VOICE_TIME_PER_LEVEL} с, отдыхает −${l * VOICE_REST_PER_LEVEL} с`,
+  },
+  ancestors: {
+    id: "ancestors",
+    name: "Опыт предков",
+    icon: "🏭",
+    max: 2,
+    cost: (n) => [12, 30][n - 1],
+    effect: (l) => `новые машины строятся сразу с ${l + 1}-м уровнем`,
   },
 };
 

@@ -43,6 +43,9 @@ export interface SurpriseUI {
   /** Whistle: seconds it still sounds, seconds until it can be blown again. */
   whistle: number;
   whistleCd: number;
+  /** How long it sounds and rests when blown now (the legacy "loud voice" changes both). */
+  sound: number;
+  rest: number;
   /** Anybody to whistle at (the button shows from the first hire). */
   workers: boolean;
 }
@@ -75,6 +78,8 @@ export interface UIState {
   trophies: number;
   /** Finds in the album. */
   album: number;
+  /** Icons of this generation's challenges ("" — none). */
+  challengeIcons: string;
   surprise: SurpriseUI;
   /** Bumped on every UI sync so panels can re-read engine data. */
   tick: number;
@@ -137,7 +142,8 @@ export const useUI = create<UIState>(() => ({
   generation: 0,
   trophies: 0,
   album: 0,
-  surprise: { rush: 0, whistle: 0, whistleCd: 0, workers: false },
+  challengeIcons: "",
+  surprise: { rush: 0, whistle: 0, whistleCd: 0, sound: 30, rest: 180, workers: false },
   tabBlocked: null,
   news: false,
   clock: { day: 1, phase: "day", season: "spring", weather: "clear", rainbow: false },

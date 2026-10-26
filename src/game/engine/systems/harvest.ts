@@ -2,7 +2,9 @@ import { WATER_REACH, fruitSlotWorld, type CropDef, type CropId } from "../../da
 import { NIGHT_FISHING_BOOST, isNight } from "../daycycle";
 import { AUTUMN_BONUS_EVERY, seasonGrowth } from "../seasons";
 import { weatherGrowth } from "../weather";
+import { WINTER_GROWTH } from "../../data/challenges";
 import { SOIL_PER_LEVEL } from "../../data/legacy";
+import { effectivePerk, hasChallenge } from "../challenges";
 import type { Game } from "../Game";
 import type { Actor, Plant } from "../types";
 import { rollFind } from "./album";
@@ -23,8 +25,9 @@ export function updateFields(game: Game, dt: number) {
   const st = game.state;
   const night = isNight(st.dayClock);
   const raining = st.weather === "rain";
-  // Legacy "fertile soil": plants and orchards grow faster (fish do not care).
-  const soil = 1 + (st.legacy.soil ?? 0) * SOIL_PER_LEVEL;
+  // Legacy "fertile soil": plants and orchards grow faster (fish do not care);
+  // "Вечная зима" makes them slow.
+  const soil = (1 + effectivePerk(st, "soil") * SOIL_PER_LEVEL) * (hasChallenge(st, "winter") ? WINTER_GROWTH : 1);
   for (const f of st.fields) {
     f.spawnT += dt;
     const grow = f.crop.growTime;

@@ -120,6 +120,17 @@ const FANCY_HATS = {
       <Part g={G.cone(0.06, 0.02, 5)} c="#4fae3a" position={[0.06, 0.2, 0]} rotation={[0, 0, -0.6]} />
     </group>
   ),
+  ushanka: () => (
+    // Fur hat with the ear flaps down and the front flap turned up.
+    <group position={[0, 0.12, 0]}>
+      <Part g={G.sphere(0.24, 10, 7)} c="#7a5636" scale={[1, 0.78, 1.04]} position={[0, 0.06, 0]} />
+      <Part g={G.cyl(0.255, 0.26, 0.1, 12)} c="#d8c6a8" position={[0, -0.01, 0]} />
+      <Part g={G.box(0.3, 0.13, 0.08)} c="#d8c6a8" position={[0, 0.06, 0.22]} rotation={[-0.35, 0, 0]} />
+      <Part g={G.box(0.07, 0.2, 0.16)} c="#d8c6a8" position={[-0.25, -0.1, 0]} />
+      <Part g={G.box(0.07, 0.2, 0.16)} c="#d8c6a8" position={[0.25, -0.1, 0]} />
+      <Part g={G.sphere(0.035, 5, 4)} c="#c0392b" position={[0, 0.08, 0.265]} />
+    </group>
+  ),
   explorer: () => (
     // Pith helmet: a khaki dome, a sloping brim and a band.
     <group position={[0, 0.13, 0]}>

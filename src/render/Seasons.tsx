@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import { CircleGeometry, Color, DoubleSide, MeshLambertMaterial, Object3D, type Group, type InstancedMesh } from "three";
 import { mulberry32 } from "@/game/core/math";
+import { frozenSeason } from "@/game/engine/challenges";
 import { seasonBlend, type SeasonId } from "@/game/engine/seasons";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI, type Quality } from "@/runtime/store";
@@ -17,7 +18,8 @@ export function SeasonController({ runtime }: { runtime: Runtime }) {
     w.spring = w.summer = w.autumn = w.winter = 0;
     if (!enabled) w.summer = 1;
     else {
-      const b = seasonBlend(runtime.game.state.dayClock);
+      const st = runtime.game.state;
+      const b = seasonBlend(st.dayClock, frozenSeason(st));
       w[b.a] += 1 - b.k;
       w[b.b] += b.k;
     }
@@ -78,7 +80,7 @@ export function SeasonParticles({ runtime, quality }: { runtime: Runtime; qualit
     if (!m || !g) return;
     g.visible = enabled;
     if (!enabled) return;
-    const b = seasonBlend(runtime.game.state.dayClock);
+    const b = seasonBlend(runtime.game.state.dayClock, frozenSeason(runtime.game.state));
     const t = state.clock.elapsedTime;
     const p = runtime.game.state.player;
     let n = 0;

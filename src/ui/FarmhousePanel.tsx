@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 import { sfx } from "@/audio/sfx";
-import { formatDuration, formatMoney, roman } from "@/game/core/format";
+import { formatClock, formatDuration, formatMoney, roman } from "@/game/core/format";
+import { CHALLENGES, CHALLENGE_IDS, challengeStars, type ChallengeId } from "@/game/data/challenges";
 import { ALL_FINDS, FIND_SETS, SET_BONUS, goodsOf, setComplete } from "@/game/data/finds";
 import { HATS, HAT_IDS } from "@/game/data/hats";
 import { ITEMS } from "@/game/data/items";
-import { zoneById } from "@/game/data/layout";
+import { ZONES, zoneById } from "@/game/data/layout";
 import { PERKS, PERK_IDS, type PerkId } from "@/game/data/legacy";
 import { ACHIEVEMENTS, type AchievementDef } from "@/game/engine/achievements";
 import type { Game } from "@/game/engine/Game";
+import type { GameState } from "@/game/engine/types";
 import { PLAYER_STATS, WORKER_STATS, statMaxLevel, statValue, type LevelledStat, type PlayerStatId, type WorkerStatId } from "@/game/data/balance";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI } from "@/runtime/store";
@@ -249,47 +251,135 @@ function Legacy({ runtime }: { runtime: Runtime }) {
           Поколение {roman(st.prestige.generations + 1)} · звёзд за всё время: {st.prestige.totalStars}
         </span>
       </div>
+      {st.challenges.length > 0 && (
+        <div className="legacy__note legacy__note--challenge">
+          Испытания этого поколения: {st.challenges.map((id) => `${CHALLENGES[id].icon} ${CHALLENGES[id].name}`).join(", ")} — звёзды ×{g.starMult().toFixed(2)}
+          {st.challenges.includes("fresh") && <div>Улучшения лавки спят до следующего поколения — но купленное сейчас останется.</div>}
+        </div>
+      )}
       <HandOver runtime={runtime} />
       {PERK_IDS.map((id) => (
         <PerkCard key={id} id={id} game={g} />
+      ))}
+      <Chronicle st={st} />
+      <Records st={st} />
+    </div>
+  );
+}
+
+/** Every generation that handed the farm over, the newest first. */
+function Chronicle({ st }: { st: GameState }) {
+  if (st.chronicle.length === 0) return null;
+  return (
+    <div className="chronicle">
+      <div className="ach-head">Летопись семьи</div>
+      {[...st.chronicle].reverse().map((c) => (
+        <div key={c.gen} className="chronicle__row">
+          <span className="chronicle__gen">{roman(c.gen)}</span>
+          <span className="chronicle__time" title="До Золотой статуи">
+            🏆 {formatClock(c.statue)}
+          </span>
+          <span className="chronicle__stars">⭐ {c.stars}</span>
+          <span className="chronicle__challenges" title={c.challenges.map((id) => CHALLENGES[id].name).join(", ")}>
+            {c.challenges.map((id) => CHALLENGES[id].icon).join("")}
+          </span>
+        </div>
       ))}
     </div>
   );
 }
 
-/** Prestige: hand the farm over to the next generation for stars. */
+/** The family's best times, and how this generation is doing. */
+function Records({ st }: { st: GameState }) {
+  const rows = [
+    ...ZONES.filter((z) => z.id !== "farm").map((z) => ({ key: z.id, label: `${z.icon} ${z.name}` })),
+    { key: "statue", label: "🏆 Золотая статуя" },
+  ].filter((r) => st.records[r.key] !== undefined);
+  if (rows.length === 0) return null;
+  return (
+    <div className="records">
+      <div className="ach-head">Рекорды семьи</div>
+      {rows.map((r) => {
+        const best = st.records[r.key]!;
+        const now = st.genTimes[r.key];
+        return (
+          <div key={r.key} className="records__row">
+            <span>{r.label}</span>
+            {now !== undefined && <span className={`records__now ${now <= best ? "records__now--best" : ""}`}>сейчас {formatClock(now)}</span>}
+            <b>{formatClock(best)}</b>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Prestige: hand the farm over to the next generation for stars — with challenges for it, if you like. */
 function HandOver({ runtime }: { runtime: Runtime }) {
   const [confirm, setConfirm] = useState(false);
+  const [picked, setPicked] = useState<ChallengeId[]>([]);
   const g = runtime.game;
   if (!g.state.statue) {
     return <div className="legacy__note">Передать ферму следующему поколению можно, когда построена Золотая статуя.</div>;
   }
   const stars = g.prestigeStars();
+  const mult = challengeStars(picked);
+  const toggle = (id: ChallengeId) => {
+    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+    setConfirm(false);
+  };
   return (
-    <div className="card card--season">
-      <div className="card__icon">👨‍👩‍👧</div>
-      <div className="card__info">
-        <div className="card__name">Новое поколение</div>
-        <div className="card__value">
-          Ферма начнётся заново, а семья получит <b>+{stars}</b> ⭐ — и всё купленное в лавке останется.
+    <>
+      <div className="card card--season">
+        <div className="card__icon">👨‍👩‍👧</div>
+        <div className="card__info">
+          <div className="card__name">Новое поколение</div>
+          <div className="card__value">
+            Ферма начнётся заново, а семья получит <b>+{stars}</b> ⭐ — и всё купленное в лавке останется.
+            {picked.length > 0 && (
+              <>
+                {" "}
+                Дети возьмут испытания {picked.map((id) => CHALLENGES[id].icon).join("")} — их звёзды <b>×{mult.toFixed(2)}</b>.
+              </>
+            )}
+          </div>
         </div>
+        {confirm ? (
+          <button className="btn btn--danger" onClick={() => runtime.prestige(picked)}>
+            Точно!
+          </button>
+        ) : (
+          <button className="btn btn--buy" disabled={stars < 1} onClick={() => setConfirm(true)}>
+            Передать
+          </button>
+        )}
       </div>
-      {confirm ? (
-        <button className="btn btn--danger" onClick={() => runtime.prestige()}>
-          Точно!
-        </button>
-      ) : (
-        <button className="btn btn--buy" disabled={stars < 1} onClick={() => setConfirm(true)}>
-          Передать
-        </button>
-      )}
-    </div>
+      <div className="challenges">
+        <div className="challenges__head">
+          Испытания для детей <span>— по желанию; звёзды их поколения умножатся</span>
+        </div>
+        {CHALLENGE_IDS.map((id) => {
+          const c = CHALLENGES[id];
+          const on = picked.includes(id);
+          return (
+            <button key={id} className={`challenge ${on ? "challenge--on" : ""}`} aria-pressed={on} onClick={() => toggle(id)}>
+              <span className="challenge__icon">{c.icon}</span>
+              <span className="challenge__info">
+                <b>{c.name}</b>
+                <span>{c.desc}</span>
+              </span>
+              <span className="challenge__stars">⭐×{c.stars}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
 function PerkCard({ id, game }: { id: PerkId; game: Game }) {
   const p = PERKS[id];
-  const level = game.perk(id);
+  const level = game.ownedPerk(id);
   const cost = game.perkCost(id);
   const affordable = cost !== null && game.state.prestige.stars >= cost;
   return (

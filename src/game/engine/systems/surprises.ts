@@ -5,6 +5,7 @@
  * RNG, saved with the game, so tests can replay them.
  */
 import { dist2, nextRandom } from "../../core/math";
+import { GOLDEN_PER_LEVEL, VOICE_REST_PER_LEVEL, VOICE_TIME_PER_LEVEL } from "../../data/legacy";
 import { MERCHANT_SPOTS, type ZoneId } from "../../data/layout";
 import {
   GOLDEN_EVERY,
@@ -39,6 +40,8 @@ import { availableProducts } from "./orders";
 
 const pick = <T>(s: Surprises, list: readonly T[]) => list[Math.floor(nextRandom(s) * list.length)];
 const pause = (s: Surprises, every: { min: number; spread: number }) => every.min + nextRandom(s) * every.spread;
+/** Until the next golden plant (legacy "golden hands" make it sooner). */
+const goldenPause = (game: Game) => pause(game.state.surprises, GOLDEN_EVERY) / (1 + game.perk("golden") * GOLDEN_PER_LEVEL);
 
 export function updateSurprises(game: Game, dt: number) {
   const s = game.state.surprises;
@@ -94,7 +97,7 @@ function updateGolden(game: Game, dt: number) {
   const gp = goldenPlant(st);
   if (!gp) {
     s.golden = null;
-    s.goldenIn = pause(s, GOLDEN_EVERY);
+    s.goldenIn = goldenPause(game);
     return;
   }
   const { field, plant } = gp;
@@ -107,7 +110,7 @@ function updateGolden(game: Game, dt: number) {
   s.golden.t -= dt;
   if (s.golden.t <= 0) {
     s.golden = null;
-    s.goldenIn = pause(s, GOLDEN_EVERY);
+    s.goldenIn = goldenPause(game);
     game.emit({ type: "golden", state: "fade", x: plant.x, z: plant.z });
   }
 }
@@ -142,7 +145,7 @@ function collectGolden(game: Game, plant: Plant) {
   const st = game.state;
   const s = st.surprises;
   s.golden = null;
-  s.goldenIn = pause(s, GOLDEN_EVERY);
+  s.goldenIn = goldenPause(game);
   st.stats.golden++;
   const roll = nextRandom(s);
   let reward: GoldenReward;
@@ -402,11 +405,18 @@ function updateWhistle(game: Game, dt: number) {
 /** The whistle needs someone to whistle at, and a breath between blows. */
 export const canWhistle = (st: GameState) => st.workers.length > 0 && st.surprises.whistleCd <= 0;
 
+/** How long the whistle sounds and how long it rests (legacy "loud voice" helps). */
+export const whistleTimes = (game: Game) => {
+  const v = game.perk("voice");
+  return { sound: WHISTLE_TIME + v * VOICE_TIME_PER_LEVEL, rest: WHISTLE_COOLDOWN - v * VOICE_REST_PER_LEVEL };
+};
+
 export function blowWhistle(game: Game) {
   const st = game.state;
   if (!canWhistle(st)) return false;
-  st.surprises.whistle = WHISTLE_TIME;
-  st.surprises.whistleCd = WHISTLE_COOLDOWN;
+  const w = whistleTimes(game);
+  st.surprises.whistle = w.sound;
+  st.surprises.whistleCd = w.rest;
   st.stats.whistles++;
   game.emit({ type: "whistle", state: "start" });
   return true;

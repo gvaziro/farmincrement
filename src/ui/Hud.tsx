@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { formatDuration, formatMoney } from "@/game/core/format";
 import { ITEMS, type ItemId } from "@/game/data/items";
-import { RUSH_MULT, WHISTLE_COOLDOWN, WHISTLE_MULT, WHISTLE_TIME } from "@/game/data/surprises";
+import { RUSH_MULT, WHISTLE_MULT } from "@/game/data/surprises";
 import { dayNumber } from "@/game/engine/daycycle";
+import { frozenSeason } from "@/game/engine/challenges";
 import { DAYS_PER_SEASON, SEASONS, nextSeason, seasonDay, seasonTimeLeft, yearNumber } from "@/game/engine/seasons";
 import { WEATHER_NAMES, weatherOfDay, weatherStartsIn } from "@/game/engine/weather";
 import { itemIconUrl, useItemIconsVersion } from "@/render/itemIcons";
@@ -37,6 +38,7 @@ function TopBar({ runtime }: { runtime: Runtime }) {
   const money = useUI((s) => s.money);
   const stars = useUI((s) => s.stars);
   const rush = useUI((s) => s.surprise.rush);
+  const challengeIcons = useUI((s) => s.challengeIcons);
   const [shown, setShown] = useState(money);
   const [bump, setBump] = useState(0);
   const prev = useRef(money);
@@ -71,12 +73,20 @@ function TopBar({ runtime }: { runtime: Runtime }) {
             ✨×{RUSH_MULT} {clockText(rush)}
           </span>
         )}
+        {/* On a phone the stars ride on the money pill: the top row has no room. */}
+        {(stars > 0 || challengeIcons) && (
+          <span className="money__stars">
+            ⭐{stars}
+            {challengeIcons}
+          </span>
+        )}
       </div>
       <Carry />
       <DayClock runtime={runtime} />
-      {stars > 0 && (
-        <div className="stars" title="Звёзды наследия — их тратят в доме фермера, вкладка «Наследие»">
+      {(stars > 0 || challengeIcons) && (
+        <div className="stars" title={`Звёзды наследия — их тратят в доме фермера, вкладка «Наследие»${challengeIcons ? ". Значки — испытания этого поколения" : ""}`}>
           ⭐ {stars}
+          {challengeIcons && <span className="stars__challenges">{challengeIcons}</span>}
         </div>
       )}
       <button className="icon-btn topbar__settings" aria-label="Настройки" onClick={() => useUI.setState({ settingsOpen: true })}>
@@ -94,18 +104,18 @@ const clockText = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStar
 
 /** The foreman's whistle (also on Space): workers run faster for a while, then it needs a rest. */
 function WhistleButton({ runtime }: { runtime: Runtime }) {
-  const { whistle, whistleCd, workers } = useUI((s) => s.surprise);
+  const { whistle, whistleCd, sound, rest, workers } = useUI((s) => s.surprise);
   const panel = useUI((s) => s.panel);
   if (!workers || panel) return null;
   const active = whistle > 0;
   const ready = whistleCd <= 0;
-  const p = ready ? 1 : 1 - whistleCd / WHISTLE_COOLDOWN;
+  const p = ready ? 1 : 1 - whistleCd / rest;
   return (
     <button
       className={`whistle ${active ? "whistle--active" : ready ? "whistle--ready" : ""}`}
       style={{ "--p": p } as CSSProperties}
       disabled={!ready}
-      title={`Свисток бригадира: работники ${WHISTLE_TIME} секунд бегают в ${WHISTLE_MULT} раза быстрее (пробел)`}
+      title={`Свисток бригадира: работники ${sound} секунд бегают в ${WHISTLE_MULT} раза быстрее (пробел)`}
       aria-label="Свисток бригадира"
       onClick={() => runtime.game.whistle()}
     >
@@ -182,13 +192,16 @@ function SeasonCard({ runtime, onClose }: { runtime: Runtime; onClose: () => voi
       window.removeEventListener("pointerdown", close);
     };
   }, [onClose]);
-  const clock = runtime.game.state.dayClock;
-  const def = SEASONS[runtime.game.state.season];
+  const st = runtime.game.state;
+  const clock = st.dayClock;
+  // "Вечная зима": the calendar stands still.
+  const frozen = frozenSeason(st);
+  const def = SEASONS[st.season];
   const next = SEASONS[nextSeason(def.id)];
   const left = Math.max(60, seasonTimeLeft(clock));
-  const now = runtime.game.state.weather;
-  const today = weatherOfDay(dayNumber(clock));
-  const soon = weatherStartsIn(clock);
+  const now = st.weather;
+  const today = weatherOfDay(dayNumber(clock), frozen);
+  const soon = weatherStartsIn(clock, frozen);
   const sky =
     now !== "clear"
       ? `${WEATHER_NAMES[now].name}${now === "rain" ? " — посадки растут ×1.5" : ""}`
@@ -201,14 +214,12 @@ function SeasonCard({ runtime, onClose }: { runtime: Runtime; onClose: () => voi
         <span className="season-card__icon">{def.icon}</span>
         <div>
           <b>{def.name}</b>
-          <span>
-            день {seasonDay(clock)} из {DAYS_PER_SEASON} · год {yearNumber(clock)}
-          </span>
+          <span>{frozen ? `день ${dayNumber(clock)} · испытание поколения` : `день ${seasonDay(clock)} из ${DAYS_PER_SEASON} · год ${yearNumber(clock)}`}</span>
         </div>
       </div>
       <div className="season-card__row">
         <span>🎁</span>
-        <span>{def.perk[0].toUpperCase() + def.perk.slice(1)}</span>
+        <span>{frozen ? "Мороз: машины работают медленнее, посадки растут вдвое медленнее" : def.perk[0].toUpperCase() + def.perk.slice(1)}</span>
       </div>
       <div className="season-card__row">
         <span>📈</span>
@@ -225,9 +236,7 @@ function SeasonCard({ runtime, onClose }: { runtime: Runtime; onClose: () => voi
           <span>{sky}</span>
         </div>
       )}
-      <div className="season-card__foot">
-        До {next.genitive} {next.icon} — {formatDuration(left)}
-      </div>
+      <div className="season-card__foot">{frozen ? "Вечная зима: весны в этом поколении не будет" : `До ${next.genitive} ${next.icon} — ${formatDuration(left)}`}</div>
     </div>
   );
 }

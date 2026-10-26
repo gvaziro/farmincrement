@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatDuration, formatMoney } from "@/game/core/format";
 import { ALL_FINDS } from "@/game/data/finds";
 import type { Runtime } from "@/runtime/runtime";
 import { updateSettings, useUI, type Quality, type Settings } from "@/runtime/store";
 import { canFullscreen, toggleFullscreen } from "./fullscreen";
+import { canInstall, install, isIos, isStandalone, onInstallChange } from "./pwa";
 import { SaveTab } from "./SaveTab";
 
 const QUALITY: { id: Quality; name: string }[] = [
@@ -98,6 +99,7 @@ function GameTab() {
           ⛶ Полный экран
         </button>
       )}
+      <InstallGame />
       {!touch && (
         <p className="keys">
           <kbd>WASD</kbd> бег · <kbd>+</kbd>
@@ -106,6 +108,22 @@ function GameTab() {
       )}
     </>
   );
+}
+
+/** "Install the game" where the browser offers it; on iPhone — how to do it by hand. */
+function InstallGame() {
+  const [offered, setOffered] = useState(canInstall);
+  useEffect(() => onInstallChange(() => setOffered(canInstall())), []);
+  if (isStandalone()) return null;
+  if (offered) {
+    return (
+      <button className="btn btn--wide" onClick={() => void install()}>
+        📲 Установить игру — играть без браузера и без сети
+      </button>
+    );
+  }
+  if (isIos()) return <p className="keys">📲 Чтобы установить игру: «Поделиться» → «На экран „Домой“». Играть можно и без сети.</p>;
+  return null;
 }
 
 function Volume({ value, onChange }: { value: number; onChange: (v: number) => void }) {

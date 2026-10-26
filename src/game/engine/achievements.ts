@@ -70,6 +70,10 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: "stars_10", name: "Звёздная семья", desc: "Заработай 10 звёзд наследия", icon: "🌟", goal: 10, value: (g) => g.state.prestige.totalStars },
   { id: "perk_first", name: "Семейное дело", desc: "Купи улучшение в лавке наследия", icon: "🏛️", goal: 1, value: (g) => Object.values(g.state.legacy).reduce((s, l) => s + (l ?? 0), 0) },
   { id: "perk_max", name: "Родовое гнездо", desc: "Прокачай улучшение наследия до предела", icon: "🏰", goal: 1, value: (g) => (PERK_IDS.some((id) => (g.state.legacy[id] ?? 0) >= PERKS[id].max) ? 1 : 0) },
+  { id: "record_1", name: "Быстрее отцов", desc: "Побей семейный рекорд: участок или статуя быстрее, чем прежде", icon: "⏱️", goal: 1, value: (g) => g.state.stats.records },
+  { id: "challenge_1", name: "Закалка", desc: "Передай ферму после поколения с испытанием", icon: "🎖️", goal: 1, value: (g) => g.state.chronicle.filter((c) => c.challenges.length > 0).length },
+  { id: "winter_gen", name: "Пережили вечную зиму", desc: "Пройди поколение с испытанием «Вечная зима»", icon: "☃️", goal: 1, value: (g) => g.state.chronicle.filter((c) => c.challenges.includes("winter")).length, hat: "ushanka" },
+  { id: "challenge_3", name: "Суровая школа", desc: "Пройди поколение с тремя испытаниями сразу", icon: "🔥", goal: 3, value: (g) => Math.max(0, ...g.state.chronicle.map((c) => c.challenges.length)) },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);

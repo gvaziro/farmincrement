@@ -3,17 +3,19 @@
  * stored. Loading rebuilds the world from the layout and re-applies levels.
  */
 import { MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, OFFLINE_CAP_SECONDS, OFFLINE_EFFICIENCY, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, statMaxLevel } from "../data/balance";
+import { isChallengeId, type ChallengeId } from "../data/challenges";
 import { ALL_FINDS } from "../data/finds";
 import { isHatId } from "../data/hats";
-import { HOLIDAY_EFFICIENCY_PER_LEVEL, HOLIDAY_HOURS_PER_LEVEL, PERKS, isPerkId } from "../data/legacy";
+import { HOLIDAY_EFFICIENCY_PER_LEVEL, HOLIDAY_HOURS_PER_LEVEL, PERKS, VOICE_TIME_PER_LEVEL, isPerkId } from "../data/legacy";
 import { ITEM_IDS, isSellable, type ItemId } from "../data/items";
 import { ACHIEVEMENTS, unlockedHats } from "./achievements";
 import { FIELDS, MACHINES, MERCHANT_SPOTS, ZONES, type ZoneId } from "../data/layout";
 import { GOLDEN_LIFE, MERCHANT_EVERY, MERCHANT_WAIT, RUNAWAY_HOMES, RUNAWAY_LIFE, RUSH_TIME, WHISTLE_COOLDOWN, WHISTLE_TIME } from "../data/surprises";
 import { createRunaway, isRunawayKind } from "./systems/surprises";
-import { seasonOf } from "./seasons";
+import { frozenSeason } from "./challenges";
+import { calendarSeason } from "./seasons";
 import { currentWeather } from "./weather";
-import type { GameState, Order, Stats } from "./types";
+import type { ChronicleEntry, GameState, Order, Stats } from "./types";
 import { TUTORIAL_DONE } from "./tutorial";
 import { applyStats, createDepot, createField, createInitialState, createMachine, createSurprises, createTruck, createWorker, isLand } from "./world";
 
@@ -49,6 +51,10 @@ export interface SaveData {
   made?: Partial<Record<string, number>>;
   album?: string[];
   surprises?: SavedSurprises;
+  challenges?: string[];
+  genTimes?: Partial<Record<string, number>>;
+  records?: Partial<Record<string, number>>;
+  chronicle?: ChronicleEntry[];
 }
 
 /** Event timers and whatever event is going on (a leaving cart counts as gone). */
@@ -103,6 +109,10 @@ export function serialize(st: GameState, now = Date.now()): SaveData {
     made: { ...st.made },
     album: [...st.album],
     surprises: saveSurprises(st),
+    challenges: [...st.challenges],
+    genTimes: { ...st.genTimes },
+    records: { ...st.records },
+    chronicle: st.chronicle.map((c) => ({ ...c, challenges: [...c.challenges] })),
     // Floor: rounding up could push a save into the next season.
     dayClock: Math.floor(st.dayClock * 100) / 100,
   };
@@ -167,8 +177,12 @@ export function deserialize(raw: unknown): GameState {
   const finds = new Set(ALL_FINDS);
   st.album = new Set(Array.isArray(d.album) ? d.album.filter((id) => finds.has(id)) : []);
   st.dayClock = num(d.dayClock, 0, 0);
-  st.season = seasonOf(st.dayClock);
-  st.weather = currentWeather(st.dayClock);
+  st.challenges = readChallenges(d.challenges);
+  st.season = calendarSeason(st.dayClock, frozenSeason(st));
+  st.weather = currentWeather(st.dayClock, frozenSeason(st));
+  st.genTimes = readTimes(d.genTimes);
+  st.records = readTimes(d.records);
+  st.chronicle = Array.isArray(d.chronicle) ? d.chronicle.slice(-60).flatMap(readChronicleEntry) : [];
   const stars = Math.floor(num(d.prestige?.stars, 0, 0));
   // Saves from before the legacy shop: the stars they had become shop money.
   st.prestige = { stars, totalStars: Math.floor(num(d.prestige?.totalStars, stars, stars)), generations: num(d.prestige?.generations, 0, 0) };
@@ -249,6 +263,34 @@ export function deserialize(raw: unknown): GameState {
   return st;
 }
 
+const RECORD_KEYS = new Set<string>([...ZONES.map((z) => z.id), "statue"]);
+
+const readChallenges = (v: unknown): ChallengeId[] => (Array.isArray(v) ? [...new Set(v.filter(isChallengeId))] : []);
+
+/** Times of plots and the statue (seconds); anything else is dropped. */
+function readTimes(v: unknown): Partial<Record<string, number>> {
+  const out: Partial<Record<string, number>> = {};
+  if (!v || typeof v !== "object") return out;
+  for (const [k, t] of Object.entries(v)) {
+    if (RECORD_KEYS.has(k) && typeof t === "number" && Number.isFinite(t) && t >= 0) out[k] = t;
+  }
+  return out;
+}
+
+function readChronicleEntry(v: unknown): ChronicleEntry[] {
+  if (!v || typeof v !== "object") return [];
+  const c = v as Partial<Record<keyof ChronicleEntry, unknown>>;
+  return [
+    {
+      gen: Math.floor(num(c.gen, 1, 1)),
+      statue: num(c.statue, 0, 0),
+      played: num(c.played, 0, 0),
+      stars: Math.floor(num(c.stars, 0, 0)),
+      challenges: readChallenges(c.challenges),
+    },
+  ];
+}
+
 /** Events come back only where they still make sense (the field, plot or pen is there). */
 function readSurprises(st: GameState, v: unknown) {
   const s = createSurprises();
@@ -260,7 +302,8 @@ function readSurprises(st: GameState, v: unknown) {
   s.rush = num(d.rush, 0, 0, RUSH_TIME);
   s.merchantIn = num(d.merchantIn, s.merchantIn, 0, 3600);
   s.runawayIn = num(d.runawayIn, s.runawayIn, 0, 3600);
-  s.whistle = num(d.whistle, 0, 0, WHISTLE_TIME);
+  // "Зычный голос" makes the whistle sound longer.
+  s.whistle = num(d.whistle, 0, 0, WHISTLE_TIME + PERKS.voice.max * VOICE_TIME_PER_LEVEL);
   s.whistleCd = num(d.whistleCd, 0, 0, WHISTLE_COOLDOWN);
 
   const g = d.golden as Partial<SavedSurprises["golden"] & object> | null | undefined;

@@ -5,6 +5,7 @@ import { useMemo, useRef } from "react";
 import { BoxGeometry, CircleGeometry, Color, DoubleSide, Float32BufferAttribute, MeshBasicMaterial, MeshLambertMaterial, Object3D, RingGeometry, Vector3, type BufferGeometry, type Group, type InstancedMesh, type Mesh } from "three";
 import { merge } from "./geom";
 import { mulberry32 } from "@/game/core/math";
+import { frozenSeason } from "@/game/engine/challenges";
 import { rainbowAt, weatherAt } from "@/game/engine/weather";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI, type Quality } from "@/runtime/store";
@@ -46,12 +47,13 @@ export function WeatherFX({ runtime, quality }: { runtime: Runtime; quality: Qua
     const fm = flakes.current;
     if (!dm || !fm) return;
     const clock = runtime.game.state.dayClock;
-    const w = enabled ? weatherAt(clock) : { kind: "clear" as const, k: 0 };
+    const frozen = frozenSeason(runtime.game.state);
+    const w = enabled ? weatherAt(clock, frozen) : { kind: "clear" as const, k: 0 };
     const v = weatherVisual;
     v.rain = w.kind === "rain" ? w.k : 0;
     v.fog = w.kind === "fog" ? w.k : 0;
     v.snow = w.kind === "snow" ? w.k : 0;
-    v.rainbow = enabled ? rainbowAt(clock) : 0;
+    v.rainbow = enabled ? rainbowAt(clock, frozen) : 0;
     const t = state.clock.elapsedTime;
     const p = runtime.game.state.player;
 

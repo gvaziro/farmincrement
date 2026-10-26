@@ -46,13 +46,13 @@ const CLEAR: WeatherDay = { kind: "clear", start: 0, end: 0 };
 export const seasonOfDay = (day: number): SeasonId => SEASON_ORDER[Math.floor((day - 1) / DAYS_PER_SEASON) % SEASON_ORDER.length];
 
 /** The weather of day N (1-based). The very first day is always sunny. */
-export function weatherOfDay(day: number): WeatherDay {
+export function weatherOfDay(day: number, frozen?: SeasonId): WeatherDay {
   if (day <= 1) return CLEAR;
   const rnd = mulberry32(day * 7919 + 17);
   const roll = rnd();
   let acc = 0;
   let kind: WeatherKind = "clear";
-  for (const [k, p] of WEATHER_CHANCES[seasonOfDay(day)]) {
+  for (const [k, p] of WEATHER_CHANCES[frozen ?? seasonOfDay(day)]) {
     acc += p;
     if (roll < acc) {
       kind = k;
@@ -72,19 +72,19 @@ export function weatherOfDay(day: number): WeatherDay {
 }
 
 /** Weather right now: its kind and intensity (0 … 1, ramps in and out). */
-export function weatherAt(clock: number): { kind: WeatherKind; k: number } {
-  const w = weatherOfDay(dayNumber(clock));
+export function weatherAt(clock: number, frozen?: SeasonId): { kind: WeatherKind; k: number } {
+  const w = weatherOfDay(dayNumber(clock), frozen);
   const t = timeOfDay(clock);
   if (w.kind === "clear" || t <= w.start || t >= w.end) return { kind: "clear", k: 0 };
   return { kind: w.kind, k: Math.min(1, (t - w.start) / RAMP, (w.end - t) / RAMP) };
 }
 
 /** A rainbow after a spring or summer shower: 0 … 1. */
-export function rainbowAt(clock: number): number {
+export function rainbowAt(clock: number, frozen?: SeasonId): number {
   const day = dayNumber(clock);
-  const w = weatherOfDay(day);
+  const w = weatherOfDay(day, frozen);
   if (w.kind !== "rain") return 0;
-  const s = seasonOfDay(day);
+  const s = frozen ?? seasonOfDay(day);
   if (s !== "spring" && s !== "summer") return 0;
   const t = timeOfDay(clock);
   if (t < w.end - RAMP || t > w.end + RAINBOW_TIME) return 0;
@@ -93,8 +93,8 @@ export function rainbowAt(clock: number): number {
 }
 
 /** Weather that counts for gameplay: once it is properly under way. */
-export function currentWeather(clock: number): WeatherKind {
-  const w = weatherAt(clock);
+export function currentWeather(clock: number, frozen?: SeasonId): WeatherKind {
+  const w = weatherAt(clock, frozen);
   return w.k > 0.3 ? w.kind : "clear";
 }
 
@@ -102,8 +102,8 @@ export function currentWeather(clock: number): WeatherKind {
 export const weatherGrowth = (raining: boolean, crop: CropDef) => (raining && crop.kind !== "water" ? RAIN_GROWTH : 1);
 
 /** Seconds of play until the weather of the current day starts (or null). */
-export function weatherStartsIn(clock: number): number | null {
-  const w = weatherOfDay(dayNumber(clock));
+export function weatherStartsIn(clock: number, frozen?: SeasonId): number | null {
+  const w = weatherOfDay(dayNumber(clock), frozen);
   const t = timeOfDay(clock);
   if (w.kind === "clear" || t >= w.start) return null;
   return (w.start - t) * DAY_LENGTH;

@@ -10,6 +10,7 @@ import { Scene } from "@/render/Scene";
 import { Hud } from "@/ui/Hud";
 import { input } from "@/ui/input";
 import { Joystick } from "@/ui/Joystick";
+import { setupPwa } from "@/ui/pwa";
 import { useKeyboard } from "@/ui/useKeyboard";
 import { weatherOfDay } from "@/game/engine/weather";
 import { getRuntime } from "./runtime";
@@ -28,6 +29,9 @@ export default function GameRoot() {
   useKeyboard(runtime.game);
 
   useEffect(() => runtime.start(), [runtime]);
+
+  // Offline play and "install the app" (the worker only in production builds).
+  useEffect(() => setupPwa(), []);
 
   useEffect(() => {
     // Icons are rendered from the 3D item models in a throwaway context.

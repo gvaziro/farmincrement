@@ -2,6 +2,8 @@ import { OPERATOR_BOOST, machineCapacity, machineSpeedMult } from "../../data/ba
 import { ITEMS } from "../../data/items";
 import { inputSlot } from "../anchors";
 import type { Game } from "../Game";
+import { WINTER_MACHINES } from "../../data/challenges";
+import { hasChallenge } from "../challenges";
 import { seasonMachineSpeed } from "../seasons";
 import type { Machine } from "../types";
 
@@ -12,7 +14,8 @@ export const machineCycle = (m: Machine, boost = 1) => m.type.time / machineSpee
 
 export function updateMachines(game: Game, dt: number) {
   // Winter: warm workshops run faster.
-  const boost = seasonMachineSpeed(game.state.season);
+  // "Вечная зима": the machines freeze instead of enjoying the winter bonus.
+  const boost = hasChallenge(game.state, "winter") ? WINTER_MACHINES : seasonMachineSpeed(game.state.season);
   for (const m of game.state.machines) {
     m.spawnT += dt;
     m.pulse = Math.max(0, m.pulse - dt * 3);

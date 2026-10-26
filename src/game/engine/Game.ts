@@ -3,17 +3,19 @@
  * `game.state` every frame; the UI listens to drained events.
  */
 import { MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, machineUpgradeCost, marketPriceMult, marketUpgradeCost, starsForEarnings, statCost, statMaxLevel, truckUpgradeCost, type PlayerStatId, type WorkerStatId } from "../data/balance";
+import { CHALLENGES, DIY_HIRE_MULT, PRICEY_LAND_MULT, STINGY_MARKET, challengeStars, isChallengeId, type ChallengeId } from "../data/challenges";
 import { albumMult } from "../data/finds";
 import { ITEMS, type ItemId } from "../data/items";
-import { fieldById, machineById, machineUpgradeBase, zoneById, type PadDef } from "../data/layout";
+import { INITIAL_MACHINES, fieldById, machineById, machineUpgradeBase, zoneById, type PadDef } from "../data/layout";
 import { isHatId, type HatId } from "../data/hats";
 import { FAME_PER_LEVEL, LANDS_ORDER, PERKS, TREASURY_MONEY, WORKSHOP_PER_LEVEL, type PerkId } from "../data/legacy";
 import { RUSH_MULT } from "../data/surprises";
 import { unlockedHats, updateAchievements } from "./achievements";
+import { effectivePerk, frozenSeason, hasChallenge } from "./challenges";
 import { inputSlot, localToWorld, outputSlot, stackSlotLocal } from "./anchors";
 import { isNight } from "./daycycle";
 import { NavGrid } from "./nav";
-import { seasonDemand, seasonOf } from "./seasons";
+import { calendarSeason, seasonDemand } from "./seasons";
 import { currentWeather } from "./weather";
 import { truckDockX, truckSlot, updateDepot } from "./systems/depot";
 import { harvestAround, updateFields } from "./systems/harvest";
@@ -40,6 +42,8 @@ import {
 } from "./world";
 
 const MAX_FLIGHTS = 900;
+/** The chronicle keeps this many generations. */
+const CHRONICLE_MAX = 60;
 
 export class Game {
   state: GameState;
@@ -117,14 +121,15 @@ export class Game {
     const wasNight = isNight(st.dayClock);
     st.dayClock += dt;
     if (isNight(st.dayClock) !== wasNight) this.emit({ type: "dayPhase", phase: wasNight ? "dawn" : "night" });
-    const season = seasonOf(st.dayClock);
+    const frozen = frozenSeason(st);
+    const season = calendarSeason(st.dayClock, frozen);
     if (season !== st.season) {
       st.season = season;
       st.stats.seasons++;
       applyStats(st);
       this.emit({ type: "season", season });
     }
-    const weather = currentWeather(st.dayClock);
+    const weather = currentWeather(st.dayClock, frozen);
     if (weather !== st.weather) {
       this.emit({ type: "weather", kind: weather, from: st.weather });
       st.weather = weather;
@@ -297,9 +302,13 @@ export class Game {
   sellValue(item: ItemId) {
     return ITEMS[item].price * this.priceMult() * seasonDemand(this.state.season, item) * albumMult(this.state.album, item);
   }
-  /** What selling it pays right now (a gold rush doubles every sale). */
+  /** A gold rush doubles every sale while it lasts. */
+  rushMult() {
+    return this.state.surprises.rush > 0 ? RUSH_MULT : 1;
+  }
+  /** What the market or a truck pays right now ("Скупой рынок" pays less). */
   salePrice(item: ItemId) {
-    return this.sellValue(item) * (this.state.surprises.rush > 0 ? RUSH_MULT : 1);
+    return this.sellValue(item) * this.rushMult() * (hasChallenge(this.state, "stingy") ? STINGY_MARKET : 1);
   }
   earn(value: number, automated: boolean) {
     const st = this.state;
@@ -326,8 +335,13 @@ export class Game {
         const lvl = this.state.depot?.truckLevel ?? 1;
         return lvl >= TRUCK_MAX_LEVEL ? null : truckUpgradeCost(lvl);
       }
-      default:
+      default: {
+        // Challenges: hands and land cost more.
+        const st = this.state;
+        if (e.type === "worker" && hasChallenge(st, "diy")) return p.def.cost * DIY_HIRE_MULT;
+        if (e.type === "zone" && hasChallenge(st, "pricey")) return p.def.cost * PRICEY_LAND_MULT;
         return p.def.cost;
+      }
     }
   }
 
@@ -347,7 +361,8 @@ export class Game {
     let levelUp: number | null = null;
     switch (e.type) {
       case "machine":
-        if (!this.machineMap.has(e.id)) st.machines.push(createMachine(machineById(e.id), true));
+        // Legacy "ancestors know-how": new machines come upgraded.
+        if (!this.machineMap.has(e.id)) st.machines.push(createMachine(machineById(e.id), true, 1 + this.perk("ancestors")));
         pad.done = true;
         break;
       case "field":
@@ -362,6 +377,7 @@ export class Game {
         }
         if (e.id === "depot" && !st.depot) st.depot = createDepot();
         this.emit({ type: "toast", text: `Новая земля: ${z.name}!`, icon: z.icon });
+        this.recordTime(e.id);
         pad.done = true;
         break;
       }
@@ -402,12 +418,30 @@ export class Game {
         st.statue = true;
         pad.done = true;
         this.emit({ type: "statue" });
+        this.recordTime("statue");
         break;
     }
     st.stats.purchases++;
     if (levelUp !== null) this.emit({ type: "levelUp", pad: pad.id, level: levelUp, x: def.x, z: def.z });
     else this.emit({ type: "purchase", pad: pad.id, kind: def.kind, label: def.label, x: def.x, z: def.z });
     this.rebuild();
+  }
+
+  /**
+   * This generation reached a plot or the statue: note the time, and beat the
+   * family record if it is sooner (the first generation just sets them).
+   */
+  private recordTime(key: string) {
+    const st = this.state;
+    if (st.genTimes[key] !== undefined) return;
+    const t = st.dayClock;
+    st.genTimes[key] = t;
+    const prev = st.records[key];
+    if (prev !== undefined && t >= prev) return;
+    st.records[key] = t;
+    if (prev === undefined) return;
+    st.stats.records++;
+    this.emit({ type: "record", key, time: t, prev });
   }
 
   /** Cheapest visible progression pad — the "next goal" hint. */
@@ -454,13 +488,17 @@ export class Game {
   }
 
   // ── legacy ────────────────────────────────────────────────────────────
-  /** Level of a legacy upgrade. */
+  /** Level of a legacy upgrade that works right now ("С чистого листа" switches them off). */
   perk(id: PerkId) {
+    return effectivePerk(this.state, id);
+  }
+  /** Level bought in the shop. */
+  ownedPerk(id: PerkId) {
     return this.state.legacy[id] ?? 0;
   }
   /** Star price of the next level, or null if maxed. */
   perkCost(id: PerkId) {
-    const level = this.perk(id);
+    const level = this.ownedPerk(id);
     return level >= PERKS[id].max ? null : PERKS[id].cost(level + 1);
   }
   buyPerk(id: PerkId) {
@@ -468,21 +506,27 @@ export class Game {
     const cost = this.perkCost(id);
     if (cost === null || st.prestige.stars < cost) return false;
     st.prestige.stars -= cost;
-    st.legacy[id] = this.perk(id) + 1;
+    st.legacy[id] = this.ownedPerk(id) + 1;
     this.emit({ type: "perk", perk: id, level: st.legacy[id]! });
     return true;
   }
 
   // ── prestige ──────────────────────────────────────────────────────────
+  /** Stars this generation would bring: its earnings, times its challenges. */
   prestigeStars() {
-    return starsForEarnings(this.state.runEarned);
+    return starsForEarnings(this.state.runEarned, this.starMult());
+  }
+  /** Stars multiplier of this generation's challenges. */
+  starMult() {
+    return challengeStars(this.state.challenges);
   }
   /**
    * A new generation takes over: the farm starts from scratch, but stars,
-   * legacy upgrades, statistics, trophies and the hat are inherited — and the
-   * "next generation" upgrades give it a head start.
+   * legacy upgrades, statistics, trophies, records and the hat are inherited —
+   * and the "next generation" upgrades give it a head start. `challenges`
+   * make the new run harder and its stars more plentiful.
    */
-  prestige() {
+  prestige(challenges: readonly ChallengeId[] = []) {
     const old = this.state;
     if (!old.statue) return false;
     const next = createInitialState();
@@ -500,22 +544,32 @@ export class Game {
     next.album = old.album;
     next.hat = old.hat;
     next.surprises = createSurprises(old.surprises.seed);
+    // The family history: records to beat and the chronicle.
+    next.records = { ...old.records };
+    next.chronicle = [
+      ...old.chronicle,
+      { gen: old.prestige.generations + 1, statue: old.genTimes.statue ?? old.dayClock, played: old.dayClock, stars: earned, challenges: [...old.challenges] },
+    ].slice(-CHRONICLE_MAX);
+    next.challenges = [...new Set(challenges)].filter(isChallengeId);
     next.tutorial = TUTORIAL_DONE;
     // Keep the counter monotonic so views always notice the swap.
     next.structure = old.structure + 1;
-    // The new generation starts on a fresh spring morning.
+    // The new generation starts on a fresh spring morning (or a winter one).
     next.dayClock = 0;
+    next.season = calendarSeason(0, frozenSeason(next));
+    next.weather = currentWeather(0, frozenSeason(next));
     this.state = next;
     this.inherit(next);
     this.events = [];
     this.rebuild();
     this.emit({ type: "toast", text: `Ферма переходит к детям: ${earned} ⭐ — потрать их в доме фермера`, icon: "👨‍👩‍👧" });
+    for (const id of next.challenges) this.emit({ type: "toast", text: `Испытание «${CHALLENGES[id].name}»: ${CHALLENGES[id].desc}`, icon: CHALLENGES[id].icon });
     return true;
   }
 
   /** Head start of a new generation from the "next generation" upgrades. */
   private inherit(st: GameState) {
-    const lv = (id: PerkId) => st.legacy[id] ?? 0;
+    const lv = (id: PerkId) => effectivePerk(st, id);
     st.money = TREASURY_MONEY[Math.min(lv("treasury"), TREASURY_MONEY.length - 1)];
     st.playerLevels.capacity = Math.min(statMaxLevel(PLAYER_STATS.capacity), 1 + lv("hands"));
     st.playerLevels.speed = Math.min(statMaxLevel(PLAYER_STATS.speed), 1 + lv("hands"));
@@ -528,6 +582,7 @@ export class Game {
       const pad = st.pads.find((p) => p.id === `zone_${id}`);
       if (pad) pad.done = true;
     }
+    for (const m of st.machines) if (INITIAL_MACHINES.includes(m.id)) m.level = Math.max(m.level, 1 + lv("ancestors"));
     applyStats(st);
   }
 

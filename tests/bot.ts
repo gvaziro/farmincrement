@@ -9,6 +9,7 @@ import { CROPS } from "@/game/data/crops";
 import { MACHINE_TYPES } from "@/game/data/machines";
 import { FARMHOUSE, MARKET } from "@/game/data/layout";
 import { PLAYER_STATS, WORKER_STATS, machineCapacity, type PlayerStatId, type WorkerStatId } from "@/game/data/balance";
+import type { ChallengeId } from "@/game/data/challenges";
 import { PERK_IDS, type PerkId } from "@/game/data/legacy";
 import { Game } from "@/game/engine/Game";
 import { bearsFruit, isRipe } from "@/game/engine/systems/harvest";
@@ -34,6 +35,9 @@ const PERK_VALUE: Record<PerkId, number> = {
   hands: 1,
   fair: 0.6,
   holiday: 0.1,
+  ancestors: 2.5,
+  voice: 0.6,
+  golden: 0.3,
 };
 
 export interface LogEntry {
@@ -66,8 +70,8 @@ export class Bot {
    * start matter most; offline income means nothing to a bot). Returns what
    * it bought.
    */
-  nextGeneration(): PerkId[] {
-    if (!this.g.prestige()) throw new Error("no statue yet");
+  nextGeneration(challenges: ChallengeId[] = []): PerkId[] {
+    if (!this.g.prestige(challenges)) throw new Error("no statue yet");
     this.task = null;
     this.path = [];
     this.pathIdx = 0;

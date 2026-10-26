@@ -47,6 +47,11 @@ const dayPos = (clock: number) => clock / DAY_LENGTH + DAY_START;
 /** 0 spring … 3 winter. */
 export const seasonIndex = (clock: number) => Math.floor(dayPos(clock) / DAYS_PER_SEASON) % SEASON_ORDER.length;
 export const seasonOf = (clock: number): SeasonId => SEASON_ORDER[seasonIndex(clock)];
+/**
+ * The season the farm lives in: the calendar's, unless a challenge froze it
+ * ("Вечная зима"). Every `frozen` parameter below means the same.
+ */
+export const calendarSeason = (clock: number, frozen?: SeasonId): SeasonId => frozen ?? seasonOf(clock);
 /** Seasons since the farm was founded (0 = the first spring). */
 export const seasonSerial = (clock: number) => Math.floor(dayPos(clock) / DAYS_PER_SEASON);
 /** Day within the season, 1 … DAYS_PER_SEASON. */
@@ -70,7 +75,8 @@ const BLEND_AFTER = 0.04;
  * world changes during the night of the change-over, so the player wakes up
  * to snow instead of watching it pop in.
  */
-export function seasonBlend(clock: number): { a: SeasonId; b: SeasonId; k: number } {
+export function seasonBlend(clock: number, frozen?: SeasonId): { a: SeasonId; b: SeasonId; k: number } {
+  if (frozen) return { a: frozen, b: frozen, k: 0 };
   const p = dayPos(clock);
   const idx = Math.floor(p / DAYS_PER_SEASON);
   const into = p - idx * DAYS_PER_SEASON;

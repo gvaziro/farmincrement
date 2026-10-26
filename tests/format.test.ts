@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatMoney, plural } from "@/game/core/format";
+import { formatClock, formatDuration, formatMoney, plural } from "@/game/core/format";
 
 describe("formatMoney", () => {
   it("keeps whole numbers intact", () => {
@@ -26,6 +26,16 @@ describe("formatMoney", () => {
   it("truncates instead of rounding up", () => {
     expect(formatMoney(999_999)).toBe("999K");
     expect(formatMoney(1999)).toBe("1.99K");
+  });
+});
+
+describe("formatClock", () => {
+  it("reads like a stopwatch", () => {
+    expect(formatClock(0)).toBe("0:00");
+    expect(formatClock(95.9)).toBe("1:35");
+    expect(formatClock(3600)).toBe("1:00:00");
+    expect(formatClock(7262)).toBe("2:01:02");
+    expect(formatClock(-5)).toBe("0:00");
   });
 });
 

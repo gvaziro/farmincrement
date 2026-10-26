@@ -202,7 +202,8 @@ function giveToMerchant(game: Game, a: Actor) {
   if (i < 0) return false;
   const from = game.stackSlotWorld(a, i);
   a.stack.splice(i, 1);
-  const value = game.salePrice(m.item) * MERCHANT_MULT;
+  // The merchant pays his own price: "Скупой рынок" is about the market.
+  const value = game.sellValue(m.item) * game.rushMult() * MERCHANT_MULT;
   game.earn(value, false);
   st.stats.sold++;
   m.have++;

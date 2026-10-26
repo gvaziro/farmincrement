@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "balance": "vitest run --config vitest.balance.config.mts"
+    "balance": "vitest run --config vitest.balance.config.mts balance",
+    "balance:challenges": "vitest run --config vitest.balance.config.mts challenges"
   },
   "dependencies": {
     "@react-three/fiber": "^9.8.2",
