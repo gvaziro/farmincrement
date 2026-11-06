@@ -6,7 +6,8 @@ import { sfx } from "@/audio/sfx";
 import { formatClock, formatMoney } from "@/game/core/format";
 import { CHALLENGES, type ChallengeId } from "@/game/data/challenges";
 import { ITEMS, type ItemId } from "@/game/data/items";
-import { MARKET, ZONE_D, ZONE_W, ZONES, zoneById } from "@/game/data/layout";
+import { CITY_SEASON_PERK, CITY_DEMAND, shopById } from "@/game/data/city";
+import { CITY_ZONES, MARKET, ZONE_D, ZONE_W, ZONES, zoneById } from "@/game/data/layout";
 import { dayNumber, dayPhase, nightFactor, timeOfDay } from "@/game/engine/daycycle";
 import { Game } from "@/game/engine/Game";
 import { SET_BONUS, findById } from "@/game/data/finds";
@@ -17,9 +18,10 @@ import { achievementById } from "@/game/engine/achievements";
 import { frozenSeason } from "@/game/engine/challenges";
 import { SEASONS } from "@/game/engine/seasons";
 import { WEATHER_NAMES, rainbowAt, weatherAt } from "@/game/engine/weather";
-import { SAVE_KEY, deserialize, isFutureSave, offlineEarnings, serialize, type SaveData } from "@/game/engine/save";
+import { offlineFor } from "@/game/engine/offline";
+import { SAVE_KEY, isFutureSave, loadGame, serializeGame, type SaveData } from "@/game/engine/save";
 import { encodeSave } from "@/game/engine/saveCode";
-import { TUTORIAL, tutorialText } from "@/game/engine/tutorial";
+import { TUTORIAL, tutorialSteps, tutorialText } from "@/game/engine/tutorial";
 import type { GameEvent, RunawayKind } from "@/game/engine/types";
 import { whistleTimes } from "@/game/engine/systems/surprises";
 import { fx } from "@/render/fx";
@@ -68,7 +70,7 @@ export class Runtime {
       if (raw) {
         const data = JSON.parse(raw);
         if (isFutureSave(data)) throw new Error("save comes from a newer version of the game");
-        game = new Game(deserialize(data));
+        game = loadGame(data);
         savedAt = typeof data.savedAt === "number" ? data.savedAt : 0;
         // Touch everything the first frame needs, so a bad save fails here.
         tutorialText(game);
@@ -84,6 +86,8 @@ export class Runtime {
     }
     this.game = game ?? new Game();
     this.savedAt = savedAt;
+    // Before the scene mounts: it must not build the wrong world first.
+    useUI.setState({ world: this.game.state.world, bus: this.game.state.bus });
   }
 
   private savedAt = 0;
@@ -166,10 +170,10 @@ export class Runtime {
 
   private grantOffline(seconds: number) {
     if (seconds < 60) return;
-    const res = offlineEarnings(this.game.state.autoIncome.rate, seconds, this.game.perk("holiday"));
+    const res = offlineFor(this.game.state, seconds, this.game.perk("holiday"));
     if (res.money < 1) return;
     this.game.earn(res.money, false);
-    useUI.setState({ offline: { money: res.money, seconds: res.seconds } });
+    useUI.setState({ offline: { money: res.money, seconds: res.seconds, where: this.game.state.world } });
   }
 
   /** Called every frame from the R3F loop. */
@@ -189,6 +193,7 @@ export class Runtime {
       visual ? st.season : "summer",
       visual ? st.weather : "clear",
       visual && w.kind === "rain" ? w.k : 0,
+      st.world === "city",
     );
     if (ui.structure !== this.game.state.structure) {
       useUI.setState({ structure: this.game.state.structure });
@@ -218,7 +223,7 @@ export class Runtime {
     try {
       // While the tab is hidden the simulation is paused: stamp the moment it
       // stopped, so closing a hidden tab still earns offline income for it.
-      localStorage.setItem(SAVE_KEY, JSON.stringify(serialize(this.game.state, this.hiddenAt ?? Date.now())));
+      localStorage.setItem(SAVE_KEY, JSON.stringify(serializeGame(this.game, this.hiddenAt ?? Date.now())));
       this.lastSaveAt = Date.now();
       return true;
     } catch {
@@ -253,24 +258,25 @@ export class Runtime {
   /** Back up the farm as it is right now. */
   backup(reason: BackupReason) {
     if (this.passive) return;
-    this.keep(reason, JSON.stringify(serialize(this.game.state)));
+    this.keep(reason, JSON.stringify(serializeGame(this.game)));
   }
 
   /** The save as a one-line code (to paste in another browser). */
   exportCode() {
-    return encodeSave(serialize(this.game.state));
+    return encodeSave(serializeGame(this.game));
   }
 
   /** The save as pretty JSON (for a file). */
   exportJson() {
-    return JSON.stringify(serialize(this.game.state), null, 1);
+    return JSON.stringify(serializeGame(this.game), null, 1);
   }
 
   /** Replace the farm with `data` (the current one is backed up first) and reload. */
   importSave(data: SaveData) {
     this.backup("import");
     // No offline income for the time the save spent in a file.
-    this.replaceSave(JSON.stringify({ ...data, savedAt: Date.now() }));
+    const now = Date.now();
+    this.replaceSave(JSON.stringify({ ...data, savedAt: now, sleepingSince: data.sleepingSince ? now : undefined }));
   }
 
   /** Go back to a backup (the current farm is backed up first) and reload. */
@@ -278,7 +284,9 @@ export class Runtime {
     this.backup("restore");
     let raw = b.raw;
     try {
-      raw = JSON.stringify({ ...JSON.parse(b.raw), savedAt: Date.now() });
+      const data = JSON.parse(b.raw);
+      const now = Date.now();
+      raw = JSON.stringify({ ...data, savedAt: now, sleepingSince: data.sleepingSince ? now : undefined });
     } catch {
       /* keep it as it is: the loader will deal with it */
     }
@@ -307,6 +315,27 @@ export class Runtime {
     window.location.reload();
   }
 
+  /**
+   * Take the bus. The overlay comes first, the worlds swap behind it (the new
+   * scene takes a moment to build), then the overlay lifts.
+   */
+  travel() {
+    if (this.passive || !this.game.canTravel() || useUI.getState().travel) return;
+    const to = this.game.state.world === "farm" ? "city" : "farm";
+    const first = !this.game.city;
+    useUI.setState({ travel: to, panel: null });
+    sfx.play("whoosh");
+    setTimeout(() => {
+      const pay = this.game.travel();
+      fx.reset();
+      useUI.setState({ world: this.game.state.world, bus: true, chapter: first });
+      if (pay) useUI.setState({ offline: { money: pay.money, seconds: pay.seconds, where: this.game.state.world } });
+      this.save();
+      this.syncUI();
+    }, 600);
+    setTimeout(() => useUI.setState({ travel: null }), 1500);
+  }
+
   prestige(challenges: ChallengeId[] = []) {
     this.backup("prestige");
     if (!this.game.prestige(challenges)) return;
@@ -321,9 +350,12 @@ export class Runtime {
     const st = g.state;
     const tutorial = tutorialText(g);
     let hint: { icon: string; text: string; item?: ItemId } | null = null;
-    if (tutorial) hint = { icon: TUTORIAL[st.tutorial].icon, item: TUTORIAL[st.tutorial].item, text: tutorial };
+    const steps = tutorialSteps(g);
+    if (tutorial) hint = { icon: steps[st.tutorial].icon, item: steps[st.tutorial].item, text: tutorial };
     const goalPad = st.tutorial >= TUTORIAL.length ? g.goal() : null;
     const goal = goalPad ? { label: goalPad.def.label, icon: goalPad.def.icon, cost: g.padCost(goalPad) ?? 0 } : null;
+    // Nothing left to buy on the farm: the next step is the bus.
+    if (!hint && !goal && st.world === "farm" && st.bus && !g.city) hint = { icon: "🚌", text: "Новая глава: автобус в город ждёт на остановке" };
     const ui = useUI.getState();
     const money = Math.floor(st.money);
     const carried = st.player.stack.length;
@@ -357,6 +389,8 @@ export class Runtime {
       ui.trophies !== st.achievements.size ||
       ui.album !== st.album.size ||
       ui.challengeIcons !== challengeIcons ||
+      ui.bus !== st.bus ||
+      ui.towerFloors !== (st.city?.floors ?? 0) ||
       su.rush !== surprise.rush ||
       su.whistle !== surprise.whistle ||
       su.whistleCd !== surprise.whistleCd ||
@@ -364,7 +398,7 @@ export class Runtime {
       su.rest !== surprise.rest ||
       su.workers !== surprise.workers;
     if (changed || ui.panel) {
-      useUI.setState({ money, hint, goal, stars: st.prestige.stars, statue: st.statue, carry: [carried, cap], clock: { day, phase, season, weather, rainbow }, hat: st.hat, generation: st.prestige.generations, trophies: st.achievements.size, album: st.album.size, challengeIcons, surprise, tick: ui.tick + 1 });
+      useUI.setState({ money, hint, goal, stars: st.prestige.stars, statue: st.statue, carry: [carried, cap], clock: { day, phase, season, weather, rainbow }, hat: st.hat, generation: st.prestige.generations, trophies: st.achievements.size, album: st.album.size, challengeIcons, surprise, bus: st.bus, towerFloors: st.city?.floors ?? 0, tick: ui.tick + 1 });
     }
   }
 
@@ -401,7 +435,8 @@ export class Runtime {
     if (!pad || pad.def.effect.type !== "zone") return;
     const zone = zoneById(pad.def.effect.id);
     const zones = this.game.state.zones;
-    const open = (gx: number, gz: number) => ZONES.some((z) => z.gx === gx && z.gz === gz && z.id !== zone.id && zones.has(z.id));
+    const plots = this.game.state.world === "city" ? CITY_ZONES : ZONES;
+    const open = (gx: number, gz: number) => plots.some((z) => z.gx === gx && z.gz === gz && z.id !== zone.id && zones.has(z.id));
     const cx = zone.gx * ZONE_W;
     const cz = zone.gz * ZONE_D;
     const sides: [number, number, number, number, boolean][] = [
@@ -486,8 +521,58 @@ export class Runtime {
         fx.dust(e.x, e.z);
         break;
       case "zone":
-        useUI.setState({ panel: e.kind === "farmhouse" ? "farmhouse" : null });
+        useUI.setState({ panel: e.kind === "farmhouse" ? "farmhouse" : e.kind === "bus" ? "bus" : null });
         break;
+      case "served":
+        if (this.nearPlayer(e.x, e.z, 16)) {
+          fx.coins(e.x, 1.2, e.z, 2);
+          fx.text(`+$${formatMoney(e.value)}`, e.x, 1.9, e.z, "money");
+          sfx.play("coin");
+        }
+        break;
+      case "tip":
+        if (this.nearPlayer(e.x, e.z, 12)) fx.text(`Чаевые +$${formatMoney(e.value)}`, e.x, 1.6, e.z, "info");
+        break;
+      case "sad":
+        if (this.nearPlayer(e.x, e.z, 14)) fx.text("😞", e.x, 2.1, e.z, "info");
+        break;
+      case "delivered":
+        fx.coins(e.x, 1, e.z, 3);
+        fx.text(`+$${formatMoney(e.value)}`, e.x, 1.6, e.z, "money");
+        if (this.nearPlayer(e.x, e.z)) sfx.play("coin");
+        break;
+      case "penny": {
+        const p = this.game.state.player;
+        fx.text(`С фермы +$${formatMoney(e.value)}`, p.x, 2.6, p.z, "money");
+        sfx.play("coin");
+        break;
+      }
+      case "rushHour":
+        pushToast("Час пик: покупателей в полтора раза больше", "⏰");
+        sfx.play("bell");
+        break;
+      case "buzz":
+        if (e.state === "start") {
+          pushToast(`Блогер снял «${shopById(e.shop).name}»: очередь на 40 секунд!`, "📱");
+          sfx.play("ding");
+        }
+        break;
+      case "shopOpen":
+        pushToast(`Открываемся: ${shopById(e.shop).name}! Семья прославилась: +${e.stars} ⭐`, shopById(e.shop).icon);
+        break;
+      case "floor":
+        pushToast(`Этаж ${e.floor} готов: все цены компании выше`, "🏙️");
+        fx.confetti(e.x, 6, e.z, 70, GOLD_CONFETTI);
+        fx.shake = Math.max(fx.shake, 0.5);
+        break;
+      case "chapterDone": {
+        const p = this.game.state.player;
+        for (let i = 0; i < 4; i++) fx.confetti(p.x + (i - 1.5) * 2, 1, p.z, 60);
+        fx.shake = 1;
+        sfx.play("golden");
+        useUI.setState({ chapterDone: e.stars });
+        break;
+      }
       case "toast":
         pushToast(e.text, e.icon);
         break;
@@ -525,8 +610,9 @@ export class Runtime {
         break;
       case "season": {
         const def = SEASONS[e.season];
-        pushToast(`${def.arrival}: ${def.perk}`, def.icon);
-        pushToast(`Сезонный спрос ×1.5: ${def.demand.map((i) => ITEMS[i].name.toLowerCase()).join(", ")}`, "📈");
+        const inCity = this.game.state.world === "city";
+        pushToast(`${def.arrival}: ${inCity ? CITY_SEASON_PERK[e.season] : def.perk}`, def.icon);
+        pushToast(`Сезонный спрос ×1.5: ${(inCity ? CITY_DEMAND[e.season] : def.demand).map((i) => ITEMS[i].name.toLowerCase()).join(", ")}`, "📈");
         const p = this.game.state.player;
         fx.confetti(p.x, 1.2, p.z, 50, SEASON_CONFETTI[e.season]);
         sfx.play("season");
@@ -627,6 +713,7 @@ export class Runtime {
         for (let i = 0; i < 4; i++) fx.confetti(p.x + (i - 1.5) * 2, 1, p.z, 60);
         fx.shake = 1;
         pushToast("Империя построена! Загляни в дом фермера", "🏆");
+        pushToast("А на остановку пришёл автобус: начинается новая глава", "🚌");
         break;
       }
     }

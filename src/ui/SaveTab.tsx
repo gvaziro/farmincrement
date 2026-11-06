@@ -24,6 +24,7 @@ function SummaryLine({ s }: { s: SaveSummary }) {
   return (
     <span className="save-summary">
       ${formatMoney(s.money)} · участков: {s.zones}
+      {s.cityMoney !== undefined ? ` · в городе $${formatMoney(s.cityMoney)}` : ""}
       {s.generations > 0 ? ` · поколение ${s.generations + 1}` : ""}
       {s.playTime > 0 ? ` · ${formatDuration(s.playTime)} в игре` : ""}
     </span>

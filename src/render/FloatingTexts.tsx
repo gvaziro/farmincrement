@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { Vector3 } from "three";
 import { easeOutBack, easeOutCubic } from "@/game/core/math";
 import { PLAYER_STATS, WORKER_STATS, type PlayerStatId, type WorkerStatId } from "@/game/data/balance";
+import { CITY_OFFICE } from "@/game/data/city";
+import { formatMoney } from "@/game/core/format";
 import { ITEMS } from "@/game/data/items";
 import { FARMHOUSE } from "@/game/data/layout";
 import { TUTORIAL_DONE } from "@/game/engine/tutorial";
@@ -103,6 +105,39 @@ export function FloatingTexts({ runtime }: { runtime: Runtime }) {
 
     // Machine bubbles: what is missing / output full.
     const seen = new Set<string>();
+    const show = (id: string, html: string, cls: string, x: number, y: number, z: number) => {
+      seen.add(id);
+      let el = bubbles.current.get(id);
+      if (!el) {
+        el = document.createElement("div");
+        layer.appendChild(el);
+        bubbles.current.set(id, el);
+      }
+      const key = `${html}|${itemIconsVersion()}`;
+      if (el.dataset.key !== key) {
+        el.dataset.key = key;
+        // Markup is generated locally from item ids and numbers: no user content.
+        el.innerHTML = html;
+        el.className = `bubble ${cls}`;
+      }
+      const bob = Math.sin(state.clock.elapsedTime * 3 + x) * 4;
+      const s = toScreen(x, y, z);
+      el.style.transform = `translate3d(${s.x}px, ${s.y + bob}px, 0) translate(-50%, -100%)`;
+      el.style.display = s.behind ? "none" : "";
+    };
+    // The city: an unattended till, empty counters with someone waiting, money on the table.
+    if (st.city) {
+      for (const shop of st.city.shops) {
+        const d = shop.def;
+        const waiting = shop.queue.length > 0 && !shop.cashier && st.player.zoneId !== `till:${shop.id}`;
+        if (waiting) show(`till:${shop.id}`, `<span>Касса!</span>`, "bubble--full", d.register.x, 2.0, d.register.z);
+        if (shop.bundles > 0 && !shop.collector && st.player.zoneId !== `cash:${shop.id}`) show(`cash:${shop.id}`, `<span>$${formatMoney(Math.floor(shop.cash))}</span>`, "bubble--cash", d.cash.x, 1.5, d.cash.z);
+        for (const s of shop.shelves) {
+          if (s.count > 0 || !st.city.customers.some((c) => c.shop === shop.id && c.cphase === "pick" && c.want[0] === s.def.item)) continue;
+          show(s.id, itemIconHtml(s.def.item, 30), "bubble--need", s.def.box.x, 1.9, s.def.box.z);
+        }
+      }
+    }
     for (const m of st.machines) {
       if (m.spawnT < 1 || m.working) continue;
       let text = "";
@@ -158,7 +193,7 @@ export function FloatingTexts({ runtime }: { runtime: Runtime }) {
           bubbles.current.set("farmhouse", el);
         }
         const bob = Math.sin(state.clock.elapsedTime * 4) * 5;
-        const s = toScreen(FARMHOUSE.x, 4.6, FARMHOUSE.z);
+        const s = st.city ? toScreen(CITY_OFFICE.x, 3.6, CITY_OFFICE.z) : toScreen(FARMHOUSE.x, 4.6, FARMHOUSE.z);
         el.style.transform = `translate3d(${s.x}px, ${s.y + bob}px, 0) translate(-50%, -100%)`;
         el.style.display = s.behind ? "none" : "";
       }

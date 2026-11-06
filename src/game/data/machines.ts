@@ -20,7 +20,21 @@ export type MachineTypeId =
   | "jamhouse"
   | "icecream"
   | "piebakery"
-  | "lanternshop";
+  | "lanternshop"
+  // City kitchens and workshops.
+  | "c_coffee"
+  | "c_sandwich"
+  | "c_oven"
+  | "c_grill"
+  | "c_pastry"
+  | "c_honeycake"
+  | "c_tailor"
+  | "c_packer"
+  | `supply_${SupplyItem}`;
+
+/** What the farm van brings to the city: each gets a pallet of its own. */
+export const SUPPLY_ITEMS = ["bread", "egg", "milk", "juice", "cheese", "flour", "sauce", "smokedfish", "canned", "cake", "honey", "yarn", "sweater", "jam", "icecream", "lantern", "pie"] as const satisfies readonly ItemId[];
+export type SupplyItem = (typeof SUPPLY_ITEMS)[number];
 
 /** [x, z] offset or [x, z, w, d] rectangle in machine-local space (machine faces +z). */
 type Off = readonly [number, number];
@@ -45,6 +59,8 @@ export interface MachineTypeDef {
   opSpot: Off;
   /** Where processed items pop out of the building. */
   core: readonly [number, number, number];
+  /** A pallet the farm van fills: nothing to build, nothing to feed. */
+  supply?: boolean;
 }
 
 const std = (w: number, d: number) => ({
@@ -56,7 +72,132 @@ const std = (w: number, d: number) => ({
   core: [0, 1.2, d / 2 - 0.2] as const,
 });
 
+/** A kitchen with two inputs: a long pallet row on the left, the output on the right. */
+const wide = (w: number, d: number) => ({
+  ...std(w, d),
+  inZone: [-1.5, d / 2 + 1.3, 3.4, 2] as const,
+  outZone: [2.5, d / 2 + 1.3, 2, 2] as const,
+  upPad: [w / 2 + 1.25, 0] as const,
+});
+
+function supplyType(item: SupplyItem): MachineTypeDef {
+  return {
+    id: `supply_${item}`,
+    name: "Товар с фермы",
+    inputs: [],
+    output: { item, amount: 1 },
+    time: 1,
+    height: 1,
+    size: [0, 0],
+    inZone: [0, 0, 0, 0],
+    outZone: [0, 0, 2, 2],
+    upPad: [0, 0],
+    opSpot: [0, 0],
+    core: [0, 1, 0],
+    supply: true,
+  };
+}
+
+const SUPPLY_TYPES = Object.fromEntries(SUPPLY_ITEMS.map((i) => [`supply_${i}`, supplyType(i)])) as Record<`supply_${SupplyItem}`, MachineTypeDef>;
+
 export const MACHINE_TYPES: Record<MachineTypeId, MachineTypeDef> = {
+  ...SUPPLY_TYPES,
+  c_coffee: {
+    id: "c_coffee",
+    name: "Кофемашина",
+    inputs: [{ item: "milk", amount: 1 }],
+    output: { item: "latte", amount: 1 },
+    time: 1.6,
+    height: 3.0,
+    ...std(3.2, 2.8),
+  },
+  c_sandwich: {
+    id: "c_sandwich",
+    name: "Бутербродная",
+    inputs: [
+      { item: "bread", amount: 1 },
+      { item: "cheese", amount: 1 },
+    ],
+    output: { item: "sandwich", amount: 1 },
+    time: 2.0,
+    height: 3.2,
+    ...wide(4.4, 3.2),
+  },
+  c_oven: {
+    id: "c_oven",
+    name: "Печь для пиццы",
+    inputs: [
+      { item: "flour", amount: 1 },
+      { item: "sauce", amount: 1 },
+      { item: "cheese", amount: 1 },
+    ],
+    output: { item: "pizza", amount: 1 },
+    time: 2.6,
+    height: 3.8,
+    ...wide(4.6, 3.4),
+    inZone: [-1.6, 3.0, 3.6, 2],
+    outZone: [2.6, 3.0, 2, 2],
+  },
+  c_grill: {
+    id: "c_grill",
+    name: "Гриль шефа",
+    inputs: [
+      { item: "smokedfish", amount: 1 },
+      { item: "sauce", amount: 1 },
+    ],
+    output: { item: "fishdish", amount: 1 },
+    time: 2.8,
+    height: 3.4,
+    ...wide(4.4, 3.2),
+  },
+  c_pastry: {
+    id: "c_pastry",
+    name: "Кондитерский цех",
+    inputs: [
+      { item: "flour", amount: 1 },
+      { item: "egg", amount: 1 },
+    ],
+    output: { item: "eclair", amount: 1 },
+    time: 2.2,
+    height: 3.4,
+    ...wide(4.4, 3.2),
+  },
+  c_honeycake: {
+    id: "c_honeycake",
+    name: "Медовый цех",
+    inputs: [
+      { item: "cake", amount: 1 },
+      { item: "honey", amount: 1 },
+    ],
+    output: { item: "medovik", amount: 1 },
+    time: 3.0,
+    height: 3.4,
+    ...wide(4.4, 3.2),
+  },
+  c_tailor: {
+    id: "c_tailor",
+    name: "Ателье",
+    inputs: [
+      { item: "sweater", amount: 1 },
+      { item: "yarn", amount: 1 },
+    ],
+    output: { item: "coat", amount: 1 },
+    time: 3.2,
+    height: 3.6,
+    ...wide(4.4, 3.2),
+  },
+  c_packer: {
+    id: "c_packer",
+    name: "Упаковочная",
+    inputs: [
+      { item: "jam", amount: 1 },
+      { item: "lantern", amount: 1 },
+    ],
+    output: { item: "giftbox", amount: 1 },
+    time: 3.2,
+    height: 3.4,
+    ...wide(4.4, 3.2),
+  },
   mill: {
     id: "mill",
     name: "Мельница",

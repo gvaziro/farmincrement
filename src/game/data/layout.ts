@@ -7,12 +7,14 @@
  * with the seasons update), each ZONE_W × ZONE_D metres.
  */
 import { CROPS, type CropId } from "./crops";
-import { MACHINE_TYPES, type MachineTypeId } from "./machines";
+import { MACHINE_TYPES, type MachineTypeId, type SupplyItem } from "./machines";
 
 export const ZONE_W = 26;
 export const ZONE_D = 22;
 
-export type ZoneId = "farm" | "coop" | "pasture" | "depot" | "orchard" | "garden" | "sweets" | "pond" | "apiary" | "sheep" | "berries" | "pumpkins";
+export type FarmZoneId = "farm" | "coop" | "pasture" | "depot" | "orchard" | "garden" | "sweets" | "pond" | "apiary" | "sheep" | "berries" | "pumpkins";
+export type CityZoneId = "c_lavka" | "c_cafe" | "c_pizza" | "c_fish" | "c_sweets" | "c_fashion" | "c_store" | "c_park" | "c_tower";
+export type ZoneId = FarmZoneId | CityZoneId;
 
 export interface ZoneDef {
   id: ZoneId;
@@ -44,7 +46,20 @@ export const ZONES: ZoneDef[] = [
   { id: "pumpkins", name: "Тыквенное поле", icon: "🎃", gx: 1, gz: -2, includes: ["pumpkins_1"], tint: "#86d25f" },
 ];
 
-export const zoneById = (id: ZoneId) => ZONES.find((z) => z.id === id)!;
+/** The city: the same grid of plots on its own map (see data/city.ts). */
+export const CITY_ZONES: ZoneDef[] = [
+  { id: "c_lavka", name: "Лавка", icon: "🧺", gx: 0, gz: 0, includes: [], tint: "#d9d4c8" },
+  { id: "c_cafe", name: "Кафе", icon: "☕", gx: 1, gz: 0, includes: [], tint: "#dcd3c4" },
+  { id: "c_pizza", name: "Пиццерия", icon: "🍕", gx: -1, gz: 0, includes: [], tint: "#dbd2c6" },
+  { id: "c_fish", name: "Рыбный ресторан", icon: "🍽️", gx: 1, gz: -1, includes: [], tint: "#d3d8d8" },
+  { id: "c_sweets", name: "Кондитерская", icon: "🍰", gx: 0, gz: -1, includes: [], tint: "#e0d3d3" },
+  { id: "c_fashion", name: "Модный дом", icon: "🧥", gx: -1, gz: -1, includes: [], tint: "#d6d3dc" },
+  { id: "c_store", name: "Универмаг", icon: "🏬", gx: -1, gz: -2, includes: [], tint: "#d3d6dc" },
+  { id: "c_park", name: "Городской парк", icon: "🌳", gx: 1, gz: -2, includes: [], tint: "#8fcf6a" },
+  { id: "c_tower", name: "Башня", icon: "🏙️", gx: 0, gz: -2, includes: [], tint: "#dad6c9" },
+];
+
+export const zoneById = (id: ZoneId) => ZONES.find((z) => z.id === id) ?? CITY_ZONES.find((z) => z.id === id)!;
 export const zoneCenter = (z: { gx: number; gz: number }) => ({ x: z.gx * ZONE_W, z: z.gz * ZONE_D });
 export const zoneRect = (z: { gx: number; gz: number }) => ({
   x: z.gx * ZONE_W,
@@ -169,7 +184,89 @@ export const MACHINES: MachineDef[] = [
   { id: "lanternshop", type: "lanternshop", zone: "pumpkins", x: 30.5, z: -47.6, cost: 30_000_000 },
 ];
 
-export const machineById = (id: string) => MACHINES.find((m) => m.id === id)!;
+/**
+ * How the prices listed for a plot are scaled: one dial per plot for the
+ * balance bot (`npm run balance:city`), so a whole business can get cheaper
+ * without touching the ratios inside it.
+ */
+export const CITY_PRICE_SCALE: Record<CityZoneId, number> = {
+  c_lavka: 1,
+  c_cafe: 0.6,
+  c_pizza: 0.5,
+  c_fish: 0.4,
+  c_sweets: 0.35,
+  c_fashion: 0.3,
+  c_store: 0.18,
+  c_park: 0.5,
+  c_tower: 0.25,
+};
+/** A scaled price, rounded to two significant digits: prices should look like prices. */
+export function cityPrice(cost: number, zone: CityZoneId) {
+  const v = cost * CITY_PRICE_SCALE[zone];
+  const unit = Math.pow(10, Math.max(0, Math.floor(Math.log10(Math.max(1, v))) - 1));
+  return Math.round(v / unit) * unit;
+}
+
+// City kitchens stand along the back of a plot; pallets on the pavement by the road.
+const cityMachine = (id: string, type: MachineTypeId, zone: CityZoneId, slot: number, cost: number): MachineDef => {
+  const z = CITY_ZONES.find((c) => c.id === zone)!;
+  return { id, type, zone, x: z.gx * ZONE_W + CITY_KITCHEN_X[slot], z: z.gz * ZONE_D + CITY_KITCHEN_Z, cost: cityPrice(cost, zone) };
+};
+/** Kitchen places on a city plot (local x, and z for all of them). */
+export const CITY_KITCHEN_X = [-6, 5];
+export const CITY_KITCHEN_Z = -8.4;
+/** Pallets of farm goods along the pavement (local x, and z for all of them). */
+export const CITY_PALLET_X = [11.4, 9.1, 6.8, 4.5];
+export const CITY_PALLET_Z = 6.3;
+
+const palletMachine = (zone: CityZoneId, slot: number, item: SupplyItem, cost: number): MachineDef => {
+  const z = CITY_ZONES.find((c) => c.id === zone)!;
+  return { id: `sup_${zone}_${item}`, type: `supply_${item}`, zone, x: z.gx * ZONE_W + CITY_PALLET_X[slot], z: z.gz * ZONE_D + CITY_PALLET_Z, cost };
+};
+
+export const CITY_MACHINES: MachineDef[] = [
+  palletMachine("c_lavka", 0, "bread", 0),
+  palletMachine("c_lavka", 1, "egg", 40),
+  palletMachine("c_lavka", 2, "milk", 180),
+
+  palletMachine("c_cafe", 0, "juice", 1_200),
+  palletMachine("c_cafe", 1, "cheese", 2_000),
+  palletMachine("c_cafe", 2, "milk", 2_500),
+  palletMachine("c_cafe", 3, "bread", 6_000),
+  cityMachine("coffee", "c_coffee", "c_cafe", 0, 2_500),
+  cityMachine("sandwich", "c_sandwich", "c_cafe", 1, 6_000),
+
+  palletMachine("c_pizza", 0, "juice", 15_000),
+  palletMachine("c_pizza", 1, "sauce", 20_000),
+  palletMachine("c_pizza", 2, "flour", 40_000),
+  palletMachine("c_pizza", 3, "cheese", 40_000),
+  cityMachine("oven", "c_oven", "c_pizza", 0, 40_000),
+
+  palletMachine("c_fish", 0, "smokedfish", 120_000),
+  palletMachine("c_fish", 1, "canned", 200_000),
+  palletMachine("c_fish", 2, "sauce", 350_000),
+  cityMachine("grill", "c_grill", "c_fish", 0, 350_000),
+
+  palletMachine("c_sweets", 0, "cake", 700_000),
+  palletMachine("c_sweets", 1, "flour", 1_000_000),
+  palletMachine("c_sweets", 2, "egg", 1_000_000),
+  palletMachine("c_sweets", 3, "honey", 2_000_000),
+  cityMachine("pastry", "c_pastry", "c_sweets", 0, 1_000_000),
+  cityMachine("honeycake", "c_honeycake", "c_sweets", 1, 3_500_000),
+
+  palletMachine("c_fashion", 0, "yarn", 5_000_000),
+  palletMachine("c_fashion", 1, "sweater", 8_000_000),
+  cityMachine("tailor", "c_tailor", "c_fashion", 0, 18_000_000),
+
+  palletMachine("c_store", 0, "jam", 35_000_000),
+  palletMachine("c_store", 1, "lantern", 50_000_000),
+  palletMachine("c_store", 2, "icecream", 70_000_000),
+  palletMachine("c_store", 3, "pie", 100_000_000),
+  cityMachine("packer", "c_packer", "c_store", 0, 150_000_000),
+];
+
+const MACHINE_INDEX = new Map([...MACHINES, ...CITY_MACHINES].map((m) => [m.id, m]));
+export const machineById = (id: string) => MACHINE_INDEX.get(id)!;
 /** Base for upgrade prices: initial machines get a fixed small base. */
 export const machineUpgradeBase = (m: MachineDef) => (m.cost > 0 ? m.cost * 0.6 : 30);
 
@@ -240,12 +337,16 @@ export const MERCHANT_CART = { w: 2.4, d: 1.4, drop: { dz: 1.7, w: 2.2, d: 1.4 }
 export type WorkerTarget =
   | { kind: "machine"; id: string }
   | { kind: "market" }
-  | { kind: "depot" };
+  | { kind: "depot" }
+  | { kind: "shelf"; id: string }
+  | { kind: "delivery"; shop: string };
 
 export type WorkerJob =
   | { kind: "harvester"; fields: string[]; target: string }
   | { kind: "carrier"; source: string; target: WorkerTarget }
-  | { kind: "operator"; machine: string };
+  | { kind: "operator"; machine: string }
+  | { kind: "cashier"; shop: string }
+  | { kind: "collector"; shop: string };
 
 export interface WorkerDef {
   id: string;
@@ -263,7 +364,13 @@ export type PadEffect =
   | { type: "upgradeMarket" }
   | { type: "upgradeTruck" }
   | { type: "truck" }
-  | { type: "statue" };
+  | { type: "statue" }
+  /** City: opens counters, pallets, kitchens, tables or the delivery spot at once. */
+  | { type: "city"; machines: string[]; shelves: string[]; tables: string[]; delivery?: string }
+  | { type: "shopLevel"; shop: string }
+  | { type: "shopAds"; shop: string }
+  | { type: "shopVan"; shop: string }
+  | { type: "towerFloor" };
 
 export type PadKind = "build" | "land" | "hire" | "upgrade" | "special";
 

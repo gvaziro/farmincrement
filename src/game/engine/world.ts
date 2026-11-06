@@ -2,6 +2,7 @@
 import { hashString, mulberry32, rect, type Rect } from "../core/math";
 import { FIRST_GOLDEN, FIRST_MERCHANT, FIRST_RUNAWAY } from "../data/surprises";
 import { PLAYER_STATS, statValue, WORKER_STATS } from "../data/balance";
+import { FARM_BUS_STOP } from "../data/city";
 import { CROPS } from "../data/crops";
 import {
   DEPOT,
@@ -22,10 +23,12 @@ import {
   machineById,
   type FieldDef,
   type MachineDef,
+  type PadDef,
   type WorkerDef,
   type ZoneId,
 } from "../data/layout";
 import { MACHINE_TYPES } from "../data/machines";
+import { cityInteract, cityObstacles, cityZoneIdAt } from "./cityWorld";
 import { seasonOf, seasonWorkerSpeed } from "./seasons";
 import { currentWeather } from "./weather";
 import type {
@@ -187,13 +190,16 @@ export function createSurprises(seed = 0x5eed2026): Surprises {
   };
 }
 
-export function createPads(): PadState[] {
-  return PADS.map((def) => ({ id: def.id, def, paid: 0, level: 1, done: false, visible: false, appearT: 0 }));
+export function createPads(list: readonly PadDef[] = PADS): PadState[] {
+  return list.map((def) => ({ id: def.id, def, paid: 0, level: 1, done: false, visible: false, appearT: 0 }));
 }
 
 export function createInitialState(): GameState {
   const player = createPlayer();
   const state: GameState = {
+    world: "farm",
+    city: null,
+    bus: false,
     time: 0,
     money: 0,
     player,
@@ -210,7 +216,7 @@ export function createInitialState(): GameState {
     flights: [],
     interact: [],
     obstacles: [],
-    stats: { earned: 0, harvested: 0, sold: 0, produced: 0, purchases: 0, playTime: 0, orders: 0, fairs: 0, seasons: 0, nightFish: 0, rainHarvest: 0, bonusHarvest: 0, golden: 0, merchants: 0, caught: 0, whistles: 0, records: 0 },
+    stats: { earned: 0, harvested: 0, sold: 0, produced: 0, purchases: 0, playTime: 0, orders: 0, fairs: 0, seasons: 0, nightFish: 0, rainHarvest: 0, bonusHarvest: 0, golden: 0, merchants: 0, caught: 0, whistles: 0, records: 0, served: 0, delivered: 0 },
     tutorial: 0,
     prestige: { stars: 0, totalStars: 0, generations: 0 },
     legacy: {},
@@ -248,7 +254,8 @@ export function applyStats(state: GameState) {
   const wc = statValue(WORKER_STATS.capacity, state.workerLevels.capacity);
   for (const w of state.workers) {
     w.speed = ws * (0.95 + (hashString(w.id) % 10) / 100);
-    w.capacity = w.def.job.kind === "operator" ? 0 : wc;
+    const stands = w.def.job.kind === "operator" || w.def.job.kind === "cashier" || w.def.job.kind === "collector";
+    w.capacity = stands ? 0 : wc;
   }
 }
 
@@ -265,10 +272,11 @@ export function zoneIdAt(x: number, z: number): ZoneId | undefined {
 
 /** True when a circle of radius r at (x,z) is fully on unlocked land. */
 export function isLand(state: GameState, x: number, z: number, r: number) {
+  const at = state.world === "city" ? cityZoneIdAt : zoneIdAt;
   for (let i = 0; i < 4; i++) {
     const px = x + (i & 1 ? r : -r);
     const pz = z + (i & 2 ? r : -r);
-    const id = zoneIdAt(px, pz);
+    const id = at(px, pz);
     if (!id || !state.zones.has(id)) return false;
   }
   return true;
@@ -276,6 +284,7 @@ export function isLand(state: GameState, x: number, z: number, r: number) {
 
 // ── derived world data ──────────────────────────────────────────────────
 export function buildObstacles(state: GameState): Rect[] {
+  if (state.world === "city") return cityObstacles(state);
   const obs: Rect[] = state.machines.map((m) => m.body);
   obs.push(rect(MARKET.x, MARKET.z, MARKET.w, MARKET.d));
   obs.push(rect(FARMHOUSE.x, FARMHOUSE.z, FARMHOUSE.w, FARMHOUSE.d));
@@ -289,6 +298,7 @@ export function buildObstacles(state: GameState): Rect[] {
 }
 
 export function buildInteractZones(state: GameState): InteractZone[] {
+  if (state.world === "city") return cityInteract(state);
   const zones: InteractZone[] = [];
   for (const m of state.machines) {
     zones.push({ id: `in:${m.id}`, kind: "machineIn", ref: m.id, rect: m.inRect });
@@ -297,6 +307,7 @@ export function buildInteractZones(state: GameState): InteractZone[] {
   zones.push({ id: "market", kind: "market", ref: "market", rect: rect(MARKET.sell.x, MARKET.sell.z, MARKET.sell.w, MARKET.sell.d) });
   zones.push({ id: "farmhouse", kind: "farmhouse", ref: "farmhouse", rect: rect(FARMHOUSE.door.x, FARMHOUSE.door.z, FARMHOUSE.door.w, FARMHOUSE.door.d) });
   zones.push({ id: "trash", kind: "trash", ref: "trash", rect: rect(TRASH.x, TRASH.z, TRASH.w, TRASH.d) });
+  if (state.bus) zones.push({ id: "bus", kind: "bus", ref: "bus", rect: rect(FARM_BUS_STOP.x, FARM_BUS_STOP.z, FARM_BUS_STOP.w, FARM_BUS_STOP.d) });
   if (state.depot) {
     zones.push({ id: "depot", kind: "depot", ref: "depot", rect: rect(DEPOT.input.x, DEPOT.input.z, DEPOT.input.w, DEPOT.input.d) });
   }

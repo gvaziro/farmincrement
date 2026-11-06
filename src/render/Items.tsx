@@ -6,6 +6,7 @@ import { InstancedMesh, MeshLambertMaterial, Object3D } from "three";
 import { easeOutBack } from "@/game/core/math";
 import { ITEM_IDS, ITEMS, type ItemId } from "@/game/data/items";
 import { STACK_BASE_Y, inputSlot, layoutStack, outputSlot } from "@/game/engine/anchors";
+import { cashSlot, shelfSlot } from "@/game/engine/systems/city";
 import { truckSlot } from "@/game/engine/systems/depot";
 import { DEPOT_VISIBLE, depotSlot } from "@/game/engine/systems/interact";
 import type { Actor, FlightItem, Worker } from "@/game/engine/types";
@@ -13,7 +14,7 @@ import type { Runtime } from "@/runtime/runtime";
 import { itemGeometry } from "./models/itemModels";
 
 const vmat = new MeshLambertMaterial({ vertexColors: true, flatShading: true });
-const KINDS: FlightItem[] = [...ITEM_IDS, "coin"];
+const KINDS: FlightItem[] = [...ITEM_IDS, "coin", "cash"];
 const CAP = 1400;
 const dummy = new Object3D();
 const buf = new Float32Array(3 * 200);
@@ -109,6 +110,35 @@ export function Items({ runtime }: { runtime: Runtime }) {
         for (let i = 0; i < c; i++) {
           const p = truckSlot(tr, i);
           put(tr.cargo[i], p.x, p.y, p.z, Math.PI / 2 + jitter(i) * 0.4);
+        }
+      }
+    }
+
+    // The city: counters, money tables, what customers carry and eat.
+    const city = st.city;
+    if (city) {
+      for (const shop of city.shops) {
+        for (const s of shop.shelves) {
+          const n = Math.max(0, s.count - s.incoming);
+          for (let i = 0; i < n; i++) {
+            const p = shelfSlot(s.def, i);
+            put(s.def.item, p.x, p.y, p.z, jitter(i) * 0.5);
+          }
+        }
+        const cash = Math.max(0, shop.bundles - shop.incomingCash);
+        for (let i = 0; i < cash; i++) {
+          const p = cashSlot(shop, i);
+          put("cash", p.x, p.y, p.z, jitter(i) * 0.4);
+        }
+      }
+      for (const c of city.customers) {
+        if (c.cphase === "none") continue;
+        drawStack(c, c.scale);
+        // What they came for floats over their head while they look for it.
+        if (c.cphase === "pick" && c.want[0]) put(c.want[0], c.x, 2.05 + Math.sin(t * 3 + c.x) * 0.06, c.z, t * 1.6, 0, 0, 0.85);
+        if (c.cphase === "eat" && c.dish && c.seat) {
+          const d = c.seat.table.def;
+          put(c.dish, d.x + (c.seat.seat ? 0.2 : -0.2), 0.86, d.z, 0.4);
         }
       }
     }

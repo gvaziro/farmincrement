@@ -8,6 +8,9 @@ import type { Runtime } from "@/runtime/runtime";
 import { useUI, type Quality } from "@/runtime/store";
 import { input } from "@/ui/input";
 import { Buildings } from "./buildings/Buildings";
+import { CityBuildings, FarmBusStop } from "./city/CityBuildings";
+import { CityCustomers } from "./city/CityCustomers";
+import { CityGround } from "./city/CityGround";
 import { Characters } from "./Characters";
 import { Crops } from "./Crops";
 import { Customers } from "./Customers";
@@ -27,23 +30,35 @@ import { Surprises } from "./Surprises";
 import { WeatherFX } from "./Weather";
 
 export function Scene({ runtime, quality }: { runtime: Runtime; quality: Quality }) {
+  const world = useUI((s) => s.world);
   return (
     <>
       <GameLoop runtime={runtime} />
       <CameraRig runtime={runtime} />
       <SeasonController runtime={runtime} />
       <DayNightLights runtime={runtime} quality={quality} />
-      <Ground runtime={runtime} />
-      <Decor runtime={runtime} />
-      <Pond />
-      <Lamps />
-      <Festive />
-      <Fireflies runtime={runtime} />
-      <Crops runtime={runtime} />
-      <Buildings runtime={runtime} />
+      {world === "city" ? (
+        <>
+          <CityGround runtime={runtime} />
+          <CityBuildings runtime={runtime} />
+          <CityCustomers runtime={runtime} />
+        </>
+      ) : (
+        <>
+          <Ground runtime={runtime} />
+          <Decor runtime={runtime} />
+          <Pond />
+          <Lamps />
+          <Festive />
+          <Fireflies runtime={runtime} />
+          <Crops runtime={runtime} />
+          <Buildings runtime={runtime} />
+          <FarmBusStop runtime={runtime} />
+          <Customers runtime={runtime} />
+        </>
+      )}
       <Pads runtime={runtime} />
       <Characters runtime={runtime} />
-      <Customers runtime={runtime} />
       <Surprises runtime={runtime} />
       <Items runtime={runtime} />
       <Effects />

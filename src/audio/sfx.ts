@@ -120,11 +120,22 @@ class Sfx {
    * Called every frame with the night level (0 … 1) and the season: crickets
    * at night, birds on spring and summer days, wind gusts in winter.
    */
-  ambient(dt: number, night: number, season: SeasonId, weather: WeatherKind, rain: number) {
+  ambient(dt: number, night: number, season: SeasonId, weather: WeatherKind, rain: number, urban = false) {
     this.music.setMood(night);
     this.setRain(rain);
     const ctx = this.ctx;
     if (!ctx || !this.soundOn || ctx.state !== "running") return;
+    if (urban) {
+      // No crickets in town: a car honks somewhere down the street.
+      this.chirpIn -= dt;
+      if (this.chirpIn <= 0) {
+        this.chirpIn = 9 + Math.random() * 14;
+        const f = 300 + Math.random() * 120;
+        this.tone("square", f, f, 0.12, 0.012);
+        this.tone("square", f * 1.25, f * 1.25, 0.12, 0.012, 0.14);
+      }
+      return;
+    }
     if (night >= 0.6 && season !== "winter") {
       this.chirpIn -= dt;
       if (this.chirpIn <= 0) {

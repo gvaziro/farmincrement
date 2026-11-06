@@ -32,7 +32,71 @@ function pair(make: (x: number) => BufferGeometry[]) {
   return merge([...make(-0.1), ...make(0.1)]);
 }
 
-const builders: Record<ItemId | "coin", () => BufferGeometry> = {
+const builders: Record<ItemId | "coin" | "cash", () => BufferGeometry> = {
+  latte: () =>
+    merge([
+      part(P.cyl(0.11, 0.085, 0.2, 9), "#fff7ea", { p: [0, 0.1, 0] }),
+      part(P.cyl(0.1, 0.1, 0.02, 9), "#c98f5a", { p: [0, 0.2, 0] }),
+      part(P.cyl(0.115, 0.115, 0.03, 9), "#f4efe2", { p: [0, 0.015, 0] }),
+      part(new TorusGeometry(0.05, 0.016, 5, 8), "#fff7ea", { p: [0.12, 0.11, 0] }),
+    ]),
+  sandwich: () =>
+    merge([
+      part(P.box(0.32, 0.05, 0.26), "#e8b460", { p: [0, 0.03, 0] }),
+      part(P.box(0.33, 0.03, 0.27), "#ffc93c", { p: [0, 0.07, 0] }),
+      part(P.box(0.34, 0.025, 0.28), "#7cc24f", { p: [0, 0.098, 0] }),
+      part(P.box(0.32, 0.05, 0.26), "#e8b460", { p: [0, 0.135, 0] }),
+    ]),
+  pizza: () =>
+    merge([
+      part(P.cyl(0.21, 0.21, 0.03, 12), "#e8b460", { p: [0, 0.02, 0] }),
+      part(P.cyl(0.18, 0.18, 0.02, 12), "#ffc93c", { p: [0, 0.04, 0] }),
+      ...[0, 1, 2, 3, 4].map((i) => {
+        const a = (i / 5) * Math.PI * 2;
+        return part(P.cyl(0.035, 0.035, 0.02, 7), "#d7263d", { p: [Math.cos(a) * 0.1, 0.055, Math.sin(a) * 0.1] });
+      }),
+    ]),
+  fishdish: () =>
+    merge([
+      part(P.cyl(0.2, 0.14, 0.04, 12), "#ffffff", { p: [0, 0.02, 0] }),
+      part(P.sphere(0.1, 7, 5), "#e0683c", { p: [-0.02, 0.07, 0], s: [1.5, 0.45, 0.75] }),
+      part(P.cone(0.06, 0.08, 4), "#c9772f", { p: [0.15, 0.07, 0], r: [0, 0, Math.PI / 2] }),
+      part(P.sphere(0.03, 5, 4), "#7cc24f", { p: [-0.1, 0.1, 0.05] }),
+    ]),
+  eclair: () =>
+    merge([
+      part(P.sphere(0.08, 8, 5), "#e8c080", { p: [0, 0.05, 0], s: [2.4, 0.65, 0.8] }),
+      part(P.sphere(0.075, 8, 5), "#5a3420", { p: [0, 0.085, 0], s: [2.4, 0.3, 0.75] }),
+    ]),
+  medovik: () =>
+    merge([
+      part(P.box(0.3, 0.06, 0.26), "#e8b04a", { p: [0, 0.04, 0] }),
+      part(P.box(0.3, 0.03, 0.26), "#fff4dc", { p: [0, 0.085, 0] }),
+      part(P.box(0.3, 0.06, 0.26), "#e8b04a", { p: [0, 0.13, 0] }),
+      part(P.box(0.3, 0.03, 0.26), "#fff4dc", { p: [0, 0.175, 0] }),
+      part(P.box(0.31, 0.04, 0.27), "#c9772f", { p: [0, 0.21, 0] }),
+      part(P.sphere(0.03, 5, 4), "#f0a020", { p: [0, 0.24, 0] }),
+    ]),
+  coat: () =>
+    merge([
+      part(P.box(0.4, 0.09, 0.3), "#4a5a8a", { p: [0, 0.05, 0] }),
+      part(P.box(0.22, 0.04, 0.24), "#5f70a5", { p: [0, 0.11, 0] }),
+      part(P.box(0.05, 0.03, 0.22), "#ffd23f", { p: [0.14, 0.11, 0] }),
+      part(P.box(0.14, 0.03, 0.12), "#2f3a5f", { p: [-0.08, 0.13, -0.04] }),
+    ]),
+  giftbox: () =>
+    merge([
+      part(P.box(0.32, 0.22, 0.32), "#e8413c", { p: [0, 0.11, 0] }),
+      part(P.box(0.34, 0.05, 0.34), "#ff6b5a", { p: [0, 0.22, 0] }),
+      part(P.box(0.06, 0.24, 0.33), "#ffd23f", { p: [0, 0.12, 0] }),
+      part(P.box(0.33, 0.24, 0.06), "#ffd23f", { p: [0, 0.12, 0] }),
+      part(P.sphere(0.05, 6, 4), "#ffd23f", { p: [0, 0.26, 0], s: [1.4, 0.7, 1] }),
+    ]),
+  cash: () =>
+    merge([
+      part(P.box(0.3, 0.07, 0.16), "#6cbf6a", { p: [0, 0.04, 0] }),
+      part(P.box(0.08, 0.075, 0.165), "#f4efe2", { p: [0, 0.04, 0] }),
+    ]),
   wheat: () =>
     merge([
       part(P.cyl(0.1, 0.1, 0.4, 7), "#f2c94c", { p: [-0.02, 0.11, 0], r: [0, 0, HALF_PI] }),
@@ -263,11 +327,11 @@ const cache = new Map<string, BufferGeometry>();
 /** Models are authored small; this matches ITEMS[].height (authored × 1.15). */
 const ITEM_SCALE = 1.15;
 
-export function itemGeometry(id: ItemId | "coin"): BufferGeometry {
+export function itemGeometry(id: ItemId | "coin" | "cash"): BufferGeometry {
   let g = cache.get(id);
   if (!g) {
     g = builders[id]();
-    if (id !== "coin") g.scale(ITEM_SCALE, ITEM_SCALE, ITEM_SCALE);
+    if (id !== "coin" && id !== "cash") g.scale(ITEM_SCALE, ITEM_SCALE, ITEM_SCALE);
     g.computeBoundingSphere();
     cache.set(id, g);
   }

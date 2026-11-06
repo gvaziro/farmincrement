@@ -2,17 +2,20 @@
  * Save format. Only what cannot be derived from layout + completed pads is
  * stored. Loading rebuilds the world from the layout and re-applies levels.
  */
-import { MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, OFFLINE_CAP_SECONDS, OFFLINE_EFFICIENCY, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, statMaxLevel } from "../data/balance";
+import { MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, statMaxLevel } from "../data/balance";
 import { isChallengeId, type ChallengeId } from "../data/challenges";
 import { ALL_FINDS } from "../data/finds";
 import { isHatId } from "../data/hats";
-import { HOLIDAY_EFFICIENCY_PER_LEVEL, HOLIDAY_HOURS_PER_LEVEL, PERKS, VOICE_TIME_PER_LEVEL, isPerkId } from "../data/legacy";
+import { PERKS, VOICE_TIME_PER_LEVEL, isPerkId } from "../data/legacy";
 import { ITEM_IDS, isSellable, type ItemId } from "../data/items";
 import { ACHIEVEMENTS, unlockedHats } from "./achievements";
 import { FIELDS, MACHINES, MERCHANT_SPOTS, ZONES, type ZoneId } from "../data/layout";
 import { GOLDEN_LIFE, MERCHANT_EVERY, MERCHANT_WAIT, RUNAWAY_HOMES, RUNAWAY_LIFE, RUSH_TIME, WHISTLE_COOLDOWN, WHISTLE_TIME } from "../data/surprises";
 import { createRunaway, isRunawayKind } from "./systems/surprises";
 import { frozenSeason } from "./challenges";
+import { deserializeCity, serializeCity, type CitySave } from "./citySave";
+import { Game } from "./Game";
+import { OFFLINE_MIN_SECONDS, offlineEarnings } from "./offline";
 import { calendarSeason } from "./seasons";
 import { currentWeather } from "./weather";
 import type { ChronicleEntry, GameState, Order, Stats } from "./types";
@@ -20,8 +23,12 @@ import { TUTORIAL_DONE } from "./tutorial";
 import { applyStats, createDepot, createField, createInitialState, createMachine, createSurprises, createTruck, createWorker, isLand } from "./world";
 
 export const SAVE_KEY = "tiny-farm-empire/save";
-/** v2: prestige "seasons" became "generations" (seasons are the calendar now). */
-export const SAVE_VERSION = 2;
+/**
+ * v2: prestige "seasons" became "generations" (seasons are the calendar now).
+ * v3: chapter II — a save can hold the city next to the farm.
+ */
+export const SAVE_VERSION = 3;
+export { OFFLINE_MIN_SECONDS, offlineEarnings };
 
 export interface SaveData {
   v: number;
@@ -55,6 +62,13 @@ export interface SaveData {
   genTimes?: Partial<Record<string, number>>;
   records?: Partial<Record<string, number>>;
   chronicle?: ChronicleEntry[];
+  /** The family has built the statue: the bus to the city runs. */
+  bus?: boolean;
+  /** Which world the player is in (the farm when absent). */
+  world?: "farm" | "city";
+  city?: CitySave;
+  /** When the player left the world they are not in (ms). */
+  sleepingSince?: number;
 }
 
 /** Event timers and whatever event is going on (a leaving cart counts as gone). */
@@ -96,6 +110,7 @@ export function serialize(st: GameState, now = Date.now()): SaveData {
     workers,
     depot: st.depot ? { storage: depotStorage(st), truckLevel: st.depot.truckLevel } : null,
     statue: st.statue,
+    bus: st.bus || undefined,
     stats: { ...st.stats },
     tutorial: st.tutorial,
     prestige: { ...st.prestige },
@@ -119,6 +134,38 @@ export function serialize(st: GameState, now = Date.now()): SaveData {
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
+
+/** Both worlds: the farm's data at the top level (as always) and the city beside it. */
+export function serializeGame(game: Game, now = Date.now()): SaveData {
+  const data = serialize(game.farm, now);
+  const city = game.city;
+  if (!city) return data;
+  data.city = serializeCity(city);
+  data.world = game.state.world;
+  data.sleepingSince = game.sleepingSince;
+  // Trophies, the hat and the family's stars live in the active state.
+  data.achievements = [...game.state.achievements];
+  data.hat = game.state.hat;
+  return data;
+}
+
+/** Load a save into a Game, with both worlds in their places. */
+export function loadGame(raw: unknown): Game {
+  const farm = deserialize(raw);
+  const d = (raw && typeof raw === "object" ? raw : {}) as Partial<SaveData>;
+  if (!d.city) return new Game(farm);
+  const city = deserializeCity(d.city);
+  city.achievements = farm.achievements;
+  city.album = farm.album;
+  city.hat = farm.hat;
+  city.prestige = farm.prestige;
+  city.legacy = farm.legacy;
+  farm.bus = true;
+  city.bus = true;
+  // The city's hats are already known: only now can an earned city hat be checked.
+  const since = num(d.sleepingSince, 0, 0);
+  return d.world === "city" ? new Game(city, farm, since) : new Game(farm, city, since);
+}
 
 function saveSurprises(st: GameState): SavedSurprises {
   const s = st.surprises;
@@ -163,6 +210,8 @@ export function deserialize(raw: unknown): GameState {
   st.money = num(d.money, 0, 0);
   st.tutorial = Math.floor(num(d.tutorial, 0, 0, TUTORIAL_DONE));
   st.statue = !!d.statue;
+  // Saves from before the bus: a family past the statue already has it.
+  st.bus = !!d.bus || !!d.statue || num(d.prestige?.generations, 0, 0) > 0;
   st.runEarned = num(d.runEarned, 0, 0);
   st.autoIncome.rate = num(d.autoRate, 0, 0);
   st.order = readOrder(d.order);
@@ -344,14 +393,9 @@ function migrate(raw: unknown): SaveData | null {
     delete d.seasonEarned;
     d.v = 2;
   }
+  // v3 only adds optional fields.
+  if ((d.v as number) < 3) d.v = 3;
   return d as unknown as SaveData;
-}
-
-/** Money earned while the tab was closed ("long holiday" raises the cap and the share). */
-export function offlineEarnings(rate: number, seconds: number, holiday = 0) {
-  const cap = OFFLINE_CAP_SECONDS + holiday * HOLIDAY_HOURS_PER_LEVEL * 3600;
-  const s = Math.max(0, Math.min(seconds, cap));
-  return { seconds: s, money: Math.floor(rate * s * (OFFLINE_EFFICIENCY + holiday * HOLIDAY_EFFICIENCY_PER_LEVEL)) };
 }
 
 function readOrder(v: unknown): Order | null {
@@ -381,6 +425,8 @@ export interface SaveSummary {
   generations: number;
   stars: number;
   playTime: number;
+  /** The city's wallet, once the family has moved there. */
+  cityMoney?: number;
 }
 
 /** Summary of raw save data (or null if it is not a save at all). */
@@ -396,5 +442,6 @@ export function saveSummary(raw: unknown): SaveSummary | null {
     generations: num(d.prestige?.generations ?? d.prestige?.seasons, 0, 0),
     stars: num(d.prestige?.stars, 0, 0),
     playTime: num(d.stats?.playTime, 0, 0),
+    cityMoney: d.city ? num(d.city.money, 0, 0) : undefined,
   };
 }

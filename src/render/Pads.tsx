@@ -144,8 +144,8 @@ function draw(ctx: CanvasRenderingContext2D, pad: PadState, color: string, cost:
 function Ghost({ pad }: { pad: PadState }) {
   const info = useMemo(() => {
     const e = pad.def.effect;
-    if (e.type === "machine") {
-      const m = machineById(e.id);
+    if (e.type === "machine" || (e.type === "city" && e.machines[0] && !e.machines[0].startsWith("sup_"))) {
+      const m = machineById(e.type === "machine" ? e.id : e.machines[0]);
       const t = MACHINE_TYPES[m.type];
       return { x: m.x - pad.def.x, z: m.z - pad.def.z, w: t.size[0], d: t.size[1] };
     }

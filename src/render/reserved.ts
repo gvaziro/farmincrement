@@ -1,5 +1,6 @@
 /** Areas used by gameplay — decoration must stay out of them. */
 import { rect, type Rect } from "@/game/core/math";
+import { FARM_BUS_STOP } from "@/game/data/city";
 import { CROPS } from "@/game/data/crops";
 import { DEPOT, FARMHOUSE, FIELDS, MACHINES, MARKET, PADS, PLAYER_SPAWN, POND, STATUE, TRASH } from "@/game/data/layout";
 import { MACHINE_TYPES } from "@/game/data/machines";
@@ -31,6 +32,7 @@ export function reservedRects(): Rect[] {
   r.push(rect(STATUE.x, STATUE.z, STATUE.w + 2, STATUE.d + 2));
   r.push(rect(TRASH.x, TRASH.z - 0.5, TRASH.w + 1.2, TRASH.d + 2));
   r.push(rect(PLAYER_SPAWN.x, PLAYER_SPAWN.z, 2, 2));
+  r.push(rect(FARM_BUS_STOP.x, FARM_BUS_STOP.z, FARM_BUS_STOP.w + 2.6, FARM_BUS_STOP.d + 1));
   // Pond, its shore and the fishing walkway.
   const w = POND.water;
   r.push(rect((w.x0 + w.x1) / 2 + 0.6, (w.z0 + w.z1) / 2, w.x1 - w.x0 + 3.4, w.z1 - w.z0 + 2));

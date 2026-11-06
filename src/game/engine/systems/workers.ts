@@ -31,6 +31,10 @@ export function updateWorkers(game: Game, dt: number) {
       case "operator":
         operator(game, w, dt);
         break;
+      case "cashier":
+      case "collector":
+        standsAtShop(game, w, dt);
+        break;
     }
   }
 }
@@ -235,7 +239,8 @@ function carrier(game: Game, w: Worker, dt: number) {
       targetZone = `in:${m.id}`;
     }
   } else {
-    const z = game.interactById(tgt.kind === "market" ? "market" : "depot");
+    const id = tgt.kind === "shelf" ? `shelf:${tgt.id}` : tgt.kind === "delivery" ? `delivery:${tgt.shop}` : tgt.kind;
+    const z = game.interactById(id);
     if (z) {
       targetRect = z.rect;
       targetZone = z.id;
@@ -285,6 +290,9 @@ function carrier(game: Game, w: Worker, dt: number) {
       if (tgt.kind === "machine") {
         const m = game.machine(tgt.id)!;
         faceTowards(w, m.def.x, m.def.z, dt);
+      } else if (tgt.kind === "shelf") {
+        const box = game.shelf(tgt.id)?.def.box;
+        if (box) faceTowards(w, box.x, box.z, dt);
       }
       if (w.stack.length === 0) {
         w.phase = "toSource";
@@ -301,6 +309,37 @@ function goTarget(game: Game, w: Worker, r: Rect, zone: string) {
   w.targetZone = zone;
   w.wait = 0;
   goToRect(game, w, r);
+}
+
+// ── cashier, collector ──────────────────────────────────────────────────
+/** They walk to their place and stay: the till serves, the money table empties. */
+function standsAtShop(game: Game, w: Worker, dt: number) {
+  const job = w.def.job;
+  if (job.kind !== "cashier" && job.kind !== "collector") return;
+  const shop = game.shop(job.shop);
+  if (!shop) return idle(game, w, dt);
+  const box = job.kind === "cashier" ? shop.def.till : shop.def.cash;
+  switch (w.phase) {
+    case "spawn":
+      updateLean(w, dt);
+      if (w.spawnT > 0.6) {
+        w.phase = "toSpot";
+        setDestination(game, w, box.x, box.z);
+      }
+      return;
+    case "toSpot":
+      if (followPath(game, w, dt) || Math.hypot(w.x - box.x, w.z - box.z) < 0.3) w.phase = "operate";
+      return;
+    case "operate":
+      idle(game, w, dt);
+      faceTowards(w, box.x, box.z + 5, dt);
+      if (job.kind === "cashier") shop.cashier = true;
+      else {
+        shop.collector = true;
+        w.targetZone = `cash:${shop.id}`;
+      }
+      return;
+  }
 }
 
 // ── operator ────────────────────────────────────────────────────────────

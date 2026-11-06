@@ -15,8 +15,9 @@ import type { GameState } from "@/game/engine/types";
 import { PLAYER_STATS, WORKER_STATS, statMaxLevel, statValue, type LevelledStat, type PlayerStatId, type WorkerStatId } from "@/game/data/balance";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI } from "@/runtime/store";
+import { BusinessTab } from "./CityUI";
 
-type Tab = "farmer" | "workers" | "trophies" | "album" | "legacy";
+type Tab = "farmer" | "workers" | "trophies" | "album" | "legacy" | "business";
 
 export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
   const panel = useUI((s) => s.panel);
@@ -28,28 +29,39 @@ export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
   const st = g.state;
   const hasWorkers = st.workers.length > 0;
   // The shop opens with the first star; handing the farm over needs the statue.
-  const canLegacy = st.statue || st.prestige.generations > 0 || st.prestige.stars > 0;
-  const current: Tab = tab === "workers" && !hasWorkers ? "farmer" : tab === "legacy" && !canLegacy ? "farmer" : tab;
+  const inCity = st.world === "city";
+  const canLegacy = !inCity && (st.statue || st.prestige.generations > 0 || st.prestige.stars > 0);
+  const wrong = (tab === "workers" && !hasWorkers) || (tab === "legacy" && !canLegacy) || (tab === "album" && inCity) || (tab === "business" && !inCity);
+  const current: Tab = wrong ? "farmer" : tab;
+  // Nothing to harvest in town: the reach of your arms does not matter.
+  const stats = (Object.keys(PLAYER_STATS) as PlayerStatId[]).filter((id) => !inCity || id !== "reach");
 
   return (
     <div className="panel" onPointerDown={(e) => e.stopPropagation()}>
       <div className="panel__head">
-        <span className="panel__title">🏡 Дом фермера</span>
+        <span className="panel__title">{inCity ? "🏢 Контора" : "🏡 Дом фермера"}</span>
         <div className="tabs">
           <button className={`tab ${current === "farmer" ? "tab--on" : ""}`} onClick={() => setTab("farmer")}>
-            Фермер
+            {inCity ? "Хозяин" : "Фермер"}
           </button>
+          {inCity && (
+            <button className={`tab ${current === "business" ? "tab--on" : ""}`} onClick={() => setTab("business")}>
+              Дело 📊
+            </button>
+          )}
           {hasWorkers && (
             <button className={`tab ${current === "workers" ? "tab--on" : ""}`} onClick={() => setTab("workers")}>
-              Работники
+              {inCity ? "Сотрудники" : "Работники"}
             </button>
           )}
           <button className={`tab ${current === "trophies" ? "tab--on" : ""}`} onClick={() => setTab("trophies")}>
             Трофеи 🏆
           </button>
-          <button className={`tab ${current === "album" ? "tab--on" : ""}`} onClick={() => setTab("album")}>
-            Альбом 📖
-          </button>
+          {!inCity && (
+            <button className={`tab ${current === "album" ? "tab--on" : ""}`} onClick={() => setTab("album")}>
+              Альбом 📖
+            </button>
+          )}
           {canLegacy && (
             <button className={`tab ${current === "legacy" ? "tab--on" : ""}`} onClick={() => setTab("legacy")}>
               Наследие ⭐
@@ -58,8 +70,9 @@ export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
         </div>
       </div>
       <div className="panel__body">
+        {current === "business" && <BusinessTab runtime={runtime} />}
         {current === "farmer" &&
-          (Object.keys(PLAYER_STATS) as PlayerStatId[]).map((id) => (
+          stats.map((id) => (
             <StatCard
               key={id}
               stat={PLAYER_STATS[id]}
@@ -133,6 +146,9 @@ function Trophies({ runtime }: { runtime: Runtime }) {
   const g = runtime.game;
   const st = g.state;
   const hats = g.hats();
+  // Each world shows its own: progress reads the numbers of the world you are in.
+  const inCity = st.world === "city";
+  const list = ACHIEVEMENTS.filter((a) => !!a.city === inCity);
   return (
     <div className="trophies">
       <div className="wardrobe">
@@ -159,9 +175,9 @@ function Trophies({ runtime }: { runtime: Runtime }) {
         })}
       </div>
       <div className="ach-head">
-        Достижения: <b>{st.achievements.size}</b> из {ACHIEVEMENTS.length}
+        {inCity ? "Достижения города" : "Достижения"}: <b>{list.filter((a) => st.achievements.has(a.id)).length}</b> из {list.length}
       </div>
-      {ACHIEVEMENTS.map((a) => (
+      {list.map((a) => (
         <AchievementRow key={a.id} a={a} game={g} />
       ))}
     </div>

@@ -3,6 +3,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import type { Group } from "three";
+import { FARM_BUS_STOP } from "@/game/data/city";
 import { TUTORIAL_DONE, tutorialTarget } from "@/game/engine/tutorial";
 import type { Runtime } from "@/runtime/runtime";
 import { Arrow3D } from "./shapes";
@@ -22,6 +23,8 @@ export function Markers({ runtime }: { runtime: Runtime }) {
       const goal = g.goal();
       const cost = goal ? g.padCost(goal) : null;
       if (goal && cost !== null && st.money >= cost - goal.paid) target = { x: goal.def.x, z: goal.def.z };
+      // Nothing left to buy here: the bus is waiting.
+      else if (!goal && st.world === "farm" && st.bus && !g.city) target = { x: FARM_BUS_STOP.x, z: FARM_BUS_STOP.z };
     }
 
     const a = arrow.current!;

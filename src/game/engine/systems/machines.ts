@@ -19,7 +19,8 @@ export function updateMachines(game: Game, dt: number) {
   for (const m of game.state.machines) {
     m.spawnT += dt;
     m.pulse = Math.max(0, m.pulse - dt * 3);
-    if (m.spawnT < 0.6) continue;
+    // Pallets of farm goods are filled by the van, not by a recipe.
+    if (m.type.supply || m.spawnT < 0.6) continue;
     let budget = dt;
     // A loop so very fast machines can finish several cycles per frame.
     for (let guard = 0; guard < 4 && budget > 0; guard++) {

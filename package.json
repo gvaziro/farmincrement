@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "balance": "vitest run --config vitest.balance.config.mts balance",
-    "balance:challenges": "vitest run --config vitest.balance.config.mts challenges"
+    "balance:challenges": "vitest run --config vitest.balance.config.mts challenges",
+    "balance:city": "vitest run --config vitest.balance.config.mts city"
   },
   "dependencies": {
     "@react-three/fiber": "^9.8.2",

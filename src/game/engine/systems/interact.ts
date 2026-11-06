@@ -11,10 +11,11 @@ import {
   transferInterval,
 } from "../../data/balance";
 import { ITEMS, isSellable, type ItemId } from "../../data/items";
-import { DEPOT, MARKET, TRASH } from "../../data/layout";
+import { DEPOT, MARKET } from "../../data/layout";
 import { MERCHANT_MULT } from "../../data/surprises";
 import { inputSlot, outputSlot, pileSlot } from "../anchors";
 import type { Game } from "../Game";
+import { collectCash, dropOnShelf, handToCourier } from "./city";
 import { countOrderSale } from "./orders";
 import type { Actor, InteractZone, Machine } from "../types";
 
@@ -78,7 +79,8 @@ function processZone(game: Game, a: Actor, zone: InteractZone, dt: number, isPla
   }
   a.transferCd -= dt;
   if (a.transferCd > 0) return;
-  if (zone.kind === "farmhouse") return;
+  // Standing there is all it takes: the till and the bus stop act on their own.
+  if (zone.kind === "farmhouse" || zone.kind === "bus" || zone.kind === "till") return;
 
   const interval = isPlayer ? transferInterval(a.zoneTime) : WORKER_TRANSFER_INTERVAL;
   for (let guard = 0; guard < 4 && a.transferCd <= 0; guard++) {
@@ -97,11 +99,26 @@ function processZone(game: Game, a: Actor, zone: InteractZone, dt: number, isPla
         ok = dropIntoDepot(game, a, isPlayer);
         break;
       case "trash":
-        ok = isPlayer && dropIntoTrash(game, a, isPlayer);
+        ok = isPlayer && dropIntoTrash(game, a, isPlayer, zone);
         break;
       case "merchant":
         ok = isPlayer && giveToMerchant(game, a);
         break;
+      case "shelf": {
+        const shelf = game.shelf(zone.ref);
+        ok = !!shelf && dropOnShelf(game, a, shelf, isPlayer);
+        break;
+      }
+      case "cash": {
+        const shop = game.shop(zone.ref);
+        ok = !!shop && collectCash(game, a, shop, isPlayer);
+        break;
+      }
+      case "delivery": {
+        const shop = game.shop(zone.ref);
+        ok = !!shop && handToCourier(game, a, shop, isPlayer);
+        break;
+      }
     }
     if (!ok) {
       a.transferCd = 0;
@@ -220,19 +237,17 @@ function giveToMerchant(game: Game, a: Actor) {
 }
 
 /** Compost bin: throws away the top item. Escape hatch for unwanted goods. */
-function dropIntoTrash(game: Game, a: Actor, isPlayer: boolean) {
+function dropIntoTrash(game: Game, a: Actor, isPlayer: boolean, zone: InteractZone) {
   const i = topIndex(a, () => true);
   if (i < 0) return false;
   const item = a.stack[i];
   const from = game.stackSlotWorld(a, i);
   a.stack.splice(i, 1);
-  game.flight(item, from.x, from.y, from.z, { kind: "point", x: TRASH.x, y: 0.7, z: TRASH.z - TRASH.d / 2 - 0.35 }, 0.3, 1.2, {
-    type: "trashed",
-    item,
-    x: TRASH.x,
-    z: TRASH.z - TRASH.d / 2 - 0.35,
-  });
-  game.emit({ type: "drop", item, player: isPlayer, x: TRASH.x, z: TRASH.z });
+  // The bin stands just behind its zone (the farm's compost box, a bin on every plot in town).
+  const x = zone.rect.x;
+  const z = zone.rect.z - zone.rect.hd - 0.35;
+  game.flight(item, from.x, from.y, from.z, { kind: "point", x, y: 0.7, z }, 0.3, 1.2, { type: "trashed", item, x, z });
+  game.emit({ type: "drop", item, player: isPlayer, x: zone.rect.x, z: zone.rect.z });
   return true;
 }
 

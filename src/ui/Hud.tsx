@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { formatDuration, formatMoney } from "@/game/core/format";
+import { CITY_DEMAND, CITY_SEASON_PERK } from "@/game/data/city";
 import { ITEMS, type ItemId } from "@/game/data/items";
 import { RUSH_MULT, WHISTLE_MULT } from "@/game/data/surprises";
 import { dayNumber } from "@/game/engine/daycycle";
@@ -12,6 +13,7 @@ import { itemIconUrl, useItemIconsVersion } from "@/render/itemIcons";
 import type { Runtime } from "@/runtime/runtime";
 import { useUI } from "@/runtime/store";
 import { EDGE_ARROW_KINDS, edgeArrowEls } from "./edgeArrows";
+import { BusPanel, ChapterDoneModal, ChapterModal, TravelOverlay } from "./CityUI";
 import { FarmhousePanel } from "./FarmhousePanel";
 import { TabBlockedModal, WhatsNewModal } from "./Notices";
 import { SettingsModal } from "./SettingsModal";
@@ -26,10 +28,14 @@ export function Hud({ runtime }: { runtime: Runtime }) {
       <Toasts />
       <ControlsHint runtime={runtime} />
       <FarmhousePanel runtime={runtime} />
+      <BusPanel runtime={runtime} />
+      <ChapterModal />
+      <ChapterDoneModal />
       <OfflineModal />
       <WhatsNewModal />
       <SettingsModal runtime={runtime} />
       <TabBlockedModal runtime={runtime} />
+      <TravelOverlay />
     </div>
   );
 }
@@ -197,6 +203,7 @@ function SeasonCard({ runtime, onClose }: { runtime: Runtime; onClose: () => voi
   // "Вечная зима": the calendar stands still.
   const frozen = frozenSeason(st);
   const def = SEASONS[st.season];
+  const inCity = st.world === "city";
   const next = SEASONS[nextSeason(def.id)];
   const left = Math.max(60, seasonTimeLeft(clock));
   const now = st.weather;
@@ -204,7 +211,7 @@ function SeasonCard({ runtime, onClose }: { runtime: Runtime; onClose: () => voi
   const soon = weatherStartsIn(clock, frozen);
   const sky =
     now !== "clear"
-      ? `${WEATHER_NAMES[now].name}${now === "rain" ? " — посадки растут ×1.5" : ""}`
+      ? `${WEATHER_NAMES[now].name}${now === "rain" && !inCity ? " — посадки растут ×1.5" : ""}`
       : soon !== null
         ? `Сегодня ещё: ${WEATHER_NAMES[today.kind].name.toLowerCase()}, через ${formatDuration(soon)}`
         : null;
@@ -219,13 +226,13 @@ function SeasonCard({ runtime, onClose }: { runtime: Runtime; onClose: () => voi
       </div>
       <div className="season-card__row">
         <span>🎁</span>
-        <span>{frozen ? "Мороз: машины работают медленнее, посадки растут вдвое медленнее" : def.perk[0].toUpperCase() + def.perk.slice(1)}</span>
+        <span>{frozen ? "Мороз: машины работают медленнее, посадки растут вдвое медленнее" : inCity ? CITY_SEASON_PERK[def.id][0].toUpperCase() + CITY_SEASON_PERK[def.id].slice(1) : def.perk[0].toUpperCase() + def.perk.slice(1)}</span>
       </div>
       <div className="season-card__row">
         <span>📈</span>
         <span>Спрос ×1.5:</span>
         <span className="season-card__goods">
-          {def.demand.map((item) => (
+          {(inCity ? CITY_DEMAND[def.id] : def.demand).map((item: ItemId) => (
             <ItemIcon key={item} item={item} fallback={ITEMS[item].icon} size={26} />
           ))}
         </span>
@@ -333,8 +340,8 @@ function OfflineModal() {
     <div className="modal-backdrop">
       <div className="modal modal--offline">
         <div className="modal__emoji">🌙</div>
-        <h2>Пока тебя не было…</h2>
-        <p>Работники трудились {formatDuration(offline.seconds)} и заработали</p>
+        <h2>{offline.where === "city" ? "Пока тебя не было в городе…" : "Пока тебя не было…"}</h2>
+        <p>{offline.where === "city" ? "Заведения работали" : "Работники трудились"} {formatDuration(offline.seconds)} и заработали</p>
         <div className="modal__money">${formatMoney(offline.money)}</div>
         <button className="btn btn--primary" onClick={() => useUI.setState({ offline: null })}>
           Забрать

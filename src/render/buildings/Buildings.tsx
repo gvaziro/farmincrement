@@ -44,7 +44,7 @@ export function Buildings({ runtime }: { runtime: Runtime }) {
   );
 }
 
-function MachineView({ m }: { m: Machine }) {
+export function MachineView({ m }: { m: Machine }) {
   const body = useRef<Group>(null);
   const Model = MACHINE_MODELS[m.type.id];
   useFrame(() => {
@@ -74,7 +74,7 @@ function MachineView({ m }: { m: Machine }) {
         </StaticBatch>
       </group>
       <StaticBatch>
-        <Plaza x={lot.x} z={lot.z} w={lot.w} d={lot.d} />
+        {!m.type.supply && <Plaza x={lot.x} z={lot.z} w={lot.w} d={lot.d} />}
         {/* input pallet(s) */}
         {m.type.inputs.map((inp) => {
           const r = inputRect(m, inp.item);

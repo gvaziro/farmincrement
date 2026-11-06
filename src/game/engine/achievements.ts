@@ -22,6 +22,8 @@ export interface AchievementDef {
   /** How the progress reads: money, time or a plain count. */
   unit?: "money" | "time";
   hat?: HatId;
+  /** Counts in the city (progress reads the city's numbers) rather than on the farm. */
+  city?: boolean;
 }
 
 /** Goods of a kind made so far (saved, and kept across generations). */
@@ -74,6 +76,18 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: "challenge_1", name: "Закалка", desc: "Передай ферму после поколения с испытанием", icon: "🎖️", goal: 1, value: (g) => g.state.chronicle.filter((c) => c.challenges.length > 0).length },
   { id: "winter_gen", name: "Пережили вечную зиму", desc: "Пройди поколение с испытанием «Вечная зима»", icon: "☃️", goal: 1, value: (g) => g.state.chronicle.filter((c) => c.challenges.includes("winter")).length, hat: "ushanka" },
   { id: "challenge_3", name: "Суровая школа", desc: "Пройди поколение с тремя испытаниями сразу", icon: "🔥", goal: 3, value: (g) => Math.max(0, ...g.state.chronicle.map((c) => c.challenges.length)) },
+  // Chapter II.
+  { id: "c_first", name: "Первый покупатель", desc: "Обслужи покупателя в лавке", icon: "🧾", goal: 1, value: (g) => g.state.stats.served, city: true },
+  { id: "c_earned_10k", name: "Своё дело", desc: "Заработай в городе $10K", icon: "💵", goal: 10_000, value: (g) => g.state.stats.earned, unit: "money", city: true },
+  { id: "c_served_500", name: "Постоянные клиенты", desc: "Обслужи 500 покупателей", icon: "🛍️", goal: 500, value: (g) => g.state.stats.served, city: true },
+  { id: "c_cafe", name: "Столик у окна", desc: "Открой кафе", icon: "☕", goal: 1, value: (g) => (g.state.zones.has("c_cafe") ? 1 : 0), city: true },
+  { id: "c_delivery", name: "Мчим как ветер", desc: "Отправь с курьерами 200 заказов", icon: "🛵", goal: 200, value: (g) => g.state.stats.delivered, city: true },
+  { id: "c_staff_25", name: "Отдел кадров", desc: "25 сотрудников в городе", icon: "🧑‍💼", goal: 25, value: (g) => g.state.workers.length, city: true },
+  { id: "c_park", name: "Зелёный город", desc: "Открой городской парк", icon: "🌳", goal: 1, value: (g) => (g.state.zones.has("c_park") ? 1 : 0), city: true },
+  { id: "c_served_5000", name: "Весь город здесь", desc: "Обслужи 5 000 покупателей", icon: "🏙️", goal: 5_000, value: (g) => g.state.stats.served, city: true },
+  { id: "c_fashion", name: "Высокая мода", desc: "Открой Модный дом", icon: "🧥", goal: 1, value: (g) => (g.state.zones.has("c_fashion") ? 1 : 0), hat: "beret", city: true },
+  { id: "c_earned_1b", name: "Городской миллиардер", desc: "Заработай в городе $1B", icon: "🏦", goal: 1_000_000_000, value: (g) => g.state.stats.earned, unit: "money", city: true },
+  { id: "c_tower", name: "Хозяин города", desc: "Дострой Башню до самого верха", icon: "🏙️", goal: 1, value: (g) => (g.state.city?.finished ? 1 : 0), hat: "bowler", city: true },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);
@@ -93,8 +107,9 @@ export function updateAchievements(game: Game, dt: number) {
   st.achievementTimer -= dt;
   if (st.achievementTimer > 0) return;
   st.achievementTimer = CHECK_EVERY;
+  const inCity = st.world === "city";
   for (const a of ACHIEVEMENTS) {
-    if (st.achievements.has(a.id) || a.value(game) < a.goal) continue;
+    if (!!a.city !== inCity || st.achievements.has(a.id) || a.value(game) < a.goal) continue;
     st.achievements.add(a.id);
     game.emit({ type: "achievement", id: a.id });
   }

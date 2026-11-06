@@ -56,9 +56,20 @@ export interface UIState {
   stars: number;
   hint: { icon: string; text: string; item?: ItemId } | null;
   goal: GoalInfo | null;
-  panel: "farmhouse" | null;
+  panel: "farmhouse" | "bus" | null;
+  /** Which world is on screen. */
+  world: "farm" | "city";
+  /** The bus runs: the family has built the statue. */
+  bus: boolean;
+  /** The ride to the other world is under way (the overlay covers the swap). */
+  travel: "farm" | "city" | null;
+  /** Show the chapter's title card. */
+  chapter: boolean;
+  /** Stars for finishing the chapter, while its closing card is open. */
+  chapterDone: number | null;
+  towerFloors: number;
   toasts: Toast[];
-  offline: { money: number; seconds: number } | null;
+  offline: { money: number; seconds: number; where?: "farm" | "city" } | null;
   settingsOpen: boolean;
   settings: Settings;
   statue: boolean;
@@ -132,6 +143,12 @@ export const useUI = create<UIState>(() => ({
   hint: null,
   goal: null,
   panel: null,
+  world: "farm",
+  bus: false,
+  travel: null,
+  chapter: false,
+  chapterDone: null,
+  towerFloors: 0,
   toasts: [],
   offline: null,
   settingsOpen: false,

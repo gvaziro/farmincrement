@@ -12,8 +12,8 @@ const AGENT_RADIUS = 0.4;
 export class NavGrid {
   readonly cols: number;
   readonly rows: number;
-  readonly minX = MAP_BOUNDS.minX;
-  readonly minZ = MAP_BOUNDS.minZ;
+  readonly minX: number;
+  readonly minZ: number;
   private blocked: Uint8Array;
   // A* scratch buffers, reused between searches.
   private g: Float32Array;
@@ -25,9 +25,11 @@ export class NavGrid {
   private heapF: Float32Array;
   private heapSize = 0;
 
-  constructor() {
-    this.cols = Math.ceil((MAP_BOUNDS.maxX - MAP_BOUNDS.minX) / NAV_CELL);
-    this.rows = Math.ceil((MAP_BOUNDS.maxZ - MAP_BOUNDS.minZ) / NAV_CELL);
+  constructor(bounds: { minX: number; maxX: number; minZ: number; maxZ: number } = MAP_BOUNDS) {
+    this.minX = bounds.minX;
+    this.minZ = bounds.minZ;
+    this.cols = Math.ceil((bounds.maxX - bounds.minX) / NAV_CELL);
+    this.rows = Math.ceil((bounds.maxZ - bounds.minZ) / NAV_CELL);
     const n = this.cols * this.rows;
     this.blocked = new Uint8Array(n);
     this.g = new Float32Array(n);

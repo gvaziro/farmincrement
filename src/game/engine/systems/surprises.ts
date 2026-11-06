@@ -5,6 +5,7 @@
  * RNG, saved with the game, so tests can replay them.
  */
 import { dist2, nextRandom } from "../../core/math";
+import { CITY_MERCHANT_SPOTS } from "../../data/city";
 import { GOLDEN_PER_LEVEL, VOICE_REST_PER_LEVEL, VOICE_TIME_PER_LEVEL } from "../../data/legacy";
 import { MERCHANT_SPOTS, type ZoneId } from "../../data/layout";
 import {
@@ -54,8 +55,10 @@ export function updateSurprises(game: Game, dt: number) {
     }
   }
   if (game.state.tutorial < TUTORIAL_DONE) return;
-  updateGolden(game, dt);
   updateMerchant(game, dt);
+  // The city has no fields to glow and no pens to break out of.
+  if (game.state.world === "city") return;
+  updateGolden(game, dt);
   updateRunaway(game, dt);
 }
 
@@ -222,8 +225,9 @@ function spawnMerchant(game: Game) {
   const s = st.surprises;
   const p = st.player;
   // Plots the farm owns, with room for the cart that is not under the farmer's feet.
-  const zones = (Object.keys(MERCHANT_SPOTS) as ZoneId[]).filter((z) => {
-    const spot = MERCHANT_SPOTS[z]!;
+  const spots: Partial<Record<ZoneId, { x: number; z: number }>> = st.world === "city" ? CITY_MERCHANT_SPOTS : MERCHANT_SPOTS;
+  const zones = (Object.keys(spots) as ZoneId[]).filter((z) => {
+    const spot = spots[z]!;
     return st.zones.has(z) && dist2(spot.x, spot.z, p.x, p.z) > 16;
   });
   // He wants something worth the trip: one of the farm's best goods.
@@ -233,7 +237,7 @@ function spawnMerchant(game: Game) {
     return;
   }
   const zone = pick(s, zones);
-  const spot = MERCHANT_SPOTS[zone]!;
+  const spot = spots[zone]!;
   const item = pick(s, goods);
   const need = Math.max(4, Math.min(60, Math.round(p.capacity * (0.5 + nextRandom(s) * 0.3))));
   s.merchant = { zone, x: spot.x, z: spot.z, item, need, have: 0, earned: 0, t: MERCHANT_WAIT, phase: "arrive", anim: 0 };

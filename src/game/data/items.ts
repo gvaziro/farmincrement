@@ -28,6 +28,15 @@ export const ITEM_IDS = [
   "pumpkin",
   "pie",
   "lantern",
+  // The city's own goods.
+  "latte",
+  "sandwich",
+  "pizza",
+  "fishdish",
+  "eclair",
+  "medovik",
+  "coat",
+  "giftbox",
 ] as const;
 
 export type ItemId = (typeof ITEM_IDS)[number];
@@ -75,6 +84,14 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   pumpkin: { id: "pumpkin", name: "Тыква", icon: "🎃", price: 0, height: 0.3, color: "#f28c28" },
   pie: { id: "pie", name: "Тыквенный пирог", icon: "🥧", price: 150000, height: 0.18, color: "#e8a040" },
   lantern: { id: "lantern", name: "Фонарь-тыква", icon: "🏮", price: 70000, height: 0.33, color: "#ff7a1a" },
+  latte: { id: "latte", name: "Латте", icon: "☕", price: 110, height: 0.3, color: "#c98f5a" },
+  sandwich: { id: "sandwich", name: "Бутерброд", icon: "🥪", price: 220, height: 0.2, color: "#e8b460" },
+  pizza: { id: "pizza", name: "Пицца", icon: "🍕", price: 1500, height: 0.12, color: "#f2a33c" },
+  fishdish: { id: "fishdish", name: "Рыба под соусом", icon: "🍽️", price: 9000, height: 0.2, color: "#e0683c" },
+  eclair: { id: "eclair", name: "Эклер", icon: "🍫", price: 3000, height: 0.16, color: "#7a4a2a" },
+  medovik: { id: "medovik", name: "Медовик", icon: "🍰", price: 24000, height: 0.3, color: "#e8b04a" },
+  coat: { id: "coat", name: "Пальто", icon: "🧥", price: 130000, height: 0.2, color: "#4a5a8a" },
+  giftbox: { id: "giftbox", name: "Подарочный набор", icon: "🎁", price: 300000, height: 0.32, color: "#e8413c" },
 };
 
 export const isSellable = (id: ItemId) => ITEMS[id].price > 0;

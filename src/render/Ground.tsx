@@ -27,12 +27,23 @@ function seasonal(base: Color, out: Color) {
 
 const TILE = 8;
 
-/** Grass material whose texture lines up in world space across planes. */
-function groundMaterial(color: string | Color, cx: number, cz: number, w: number, d: number) {
-  const tex = grassTextureRepeat(w / TILE, d / TILE);
-  const fract = (v: number) => v - Math.floor(v);
-  tex.offset.set(fract((cx - w / 2) / TILE), fract(-(cz + d / 2) / TILE));
-  return makeSeasonal(new MeshLambertMaterial({ color, map: tex }), "snow");
+const groundMaterials = new Map<string, MeshLambertMaterial>();
+
+/**
+ * Grass material whose texture lines up in world space across planes. Kept for
+ * the whole session: the bus brings the farm back again and again.
+ */
+function groundMaterial(color: Color, cx: number, cz: number, w: number, d: number) {
+  const key = `${cx},${cz},${w},${d}`;
+  let m = groundMaterials.get(key);
+  if (!m) {
+    const tex = grassTextureRepeat(w / TILE, d / TILE);
+    const fract = (v: number) => v - Math.floor(v);
+    tex.offset.set(fract((cx - w / 2) / TILE), fract(-(cz + d / 2) / TILE));
+    m = makeSeasonal(new MeshLambertMaterial({ color, map: tex }), "snow");
+    groundMaterials.set(key, m);
+  }
+  return m;
 }
 
 export function Ground({ runtime }: { runtime: Runtime }) {

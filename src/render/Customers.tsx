@@ -38,10 +38,23 @@ interface Npc {
   bag: boolean;
 }
 
-function makeNpc(i: number): Npc {
+/** How a passer-by looks: reproducible from their number. */
+export function makeLook(i: number): Look {
   const rnd = mulberry32(900 + i * 17);
   const hats: Look["hat"][] = ["none", "bow", "cap", "none"];
   const hat = hats[Math.floor(rnd() * hats.length)];
+  return {
+    shirt: SHIRTS[Math.floor(rnd() * SHIRTS.length)],
+    pants: rnd() < 0.5 ? "#4a5a8a" : "#7a5a3a",
+    hat,
+    hatColor: hat === "bow" ? "#ff5d8f" : ["#5a8fd9", "#b06cff", "#ff7a59"][Math.floor(rnd() * 3)],
+    skin: ["#ffd2a6", "#f2b98a", "#d99a6c", "#ffe0c2"][Math.floor(rnd() * 4)],
+    hair: HAIR[Math.floor(rnd() * HAIR.length)],
+    scarf: SCARVES[Math.floor(rnd() * SCARVES.length)],
+  };
+}
+
+function makeNpc(i: number): Npc {
   return {
     actor: {
       id: `npc_${i}`,
@@ -62,15 +75,7 @@ function makeNpc(i: number): Npc {
       lean: { x: 0, z: 0, vx: 0, vz: 0 },
       fullT: 0,
     },
-    look: {
-      shirt: SHIRTS[Math.floor(rnd() * SHIRTS.length)],
-      pants: rnd() < 0.5 ? "#4a5a8a" : "#7a5a3a",
-      hat,
-      hatColor: hat === "bow" ? "#ff5d8f" : ["#5a8fd9", "#b06cff", "#ff7a59"][Math.floor(rnd() * 3)],
-      skin: ["#ffd2a6", "#f2b98a", "#d99a6c", "#ffe0c2"][Math.floor(rnd() * 4)],
-      hair: HAIR[Math.floor(rnd() * HAIR.length)],
-      scarf: SCARVES[Math.floor(rnd() * SCARVES.length)],
-    },
+    look: makeLook(i),
     phase: "hidden",
     t: 1 + i * 2.5,
     spot: -1,
@@ -184,17 +189,17 @@ export function Customers({ runtime }: { runtime: Runtime }) {
           get={() => n.actor}
           look={winter ? { ...n.look, hat: "beanie", hatColor: BEANIES[i % BEANIES.length] } : n.look}
           scaleOf={() => n.scale}
-          hand={<Bag npc={n} />}
+          hand={<Bag has={() => n.bag} />}
         />
       ))}
     </group>
   );
 }
 
-function Bag({ npc }: { npc: Npc }) {
+export function Bag({ has }: { has: () => boolean }) {
   const ref = useRef<Group>(null);
   useFrame(() => {
-    if (ref.current) ref.current.visible = npc.bag;
+    if (ref.current) ref.current.visible = has();
   });
   return (
     <group ref={ref}>

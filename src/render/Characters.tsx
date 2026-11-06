@@ -30,6 +30,14 @@ const LOOKS: Record<string, Look> = {
   harvester: { shirt: "#58b947", pants: "#6b4f3a", hat: "cap", hatColor: "#3f9b2f", skin: "#f6c08f", scarf: "#e8413c" },
   carrier: { shirt: "#ff9f1c", pants: "#4a5a6a", hat: "cap", hatColor: "#e2721b", skin: "#ffd9b5", scarf: "#4fae3a" },
   operator: { shirt: "#3fa7ff", pants: "#3a4a6a", hat: "hard", hatColor: "#ffd23f", skin: "#e8b48a", scarf: "#d9485f" },
+  cashier: { shirt: "#5fae45", pants: "#3a4a3a", hat: "cap", hatColor: "#3f8f2f", skin: "#ffd9b5", scarf: "#ffd23f" },
+  collector: { shirt: "#3a4a6a", pants: "#2b2f3a", hat: "none", hatColor: "#2b2f3a", skin: "#f2b98a", hair: "#2b2b2b", scarf: "#d9485f" },
+};
+
+/** In town the cooks dress like cooks. */
+const CITY_LOOKS: Partial<Record<keyof typeof LOOKS, Look>> = {
+  operator: { shirt: "#f4f4f4", pants: "#3a3f44", hat: "chef", hatColor: "#ffffff", skin: "#e8b48a", scarf: "#d9485f" },
+  carrier: { shirt: "#3f8fd9", pants: "#3a4a6a", hat: "cap", hatColor: "#2f6fb0", skin: "#ffd9b5", scarf: "#4fae3a" },
 };
 
 /** Each generation of the family wears its own colour. */
@@ -140,6 +148,19 @@ const FANCY_HATS = {
       <Part g={G.sphere(0.04, 6, 4)} c="#e0d1a2" position={[0, 0.25, 0]} />
     </group>
   ),
+  beret: () => (
+    <group position={[0, 0.18, -0.02]} rotation={[0.1, 0, -0.18]}>
+      <Part g={G.sphere(0.27, 10, 6)} c="#c0392b" scale={[1, 0.34, 1]} position={[0.03, 0.03, 0]} />
+      <Part g={G.cyl(0.018, 0.024, 0.09, 5)} c="#8e2a1f" position={[0.03, 0.13, 0]} />
+    </group>
+  ),
+  bowler: () => (
+    <group position={[0, 0.16, 0]}>
+      <Part g={G.cyl(0.32, 0.33, 0.03, 14)} c="#2f3640" />
+      <Part g={G.sphere(0.2, 10, 7)} c="#2f3640" position={[0, 0.07, 0]} scale={[1, 0.85, 1]} />
+      <Part g={G.cyl(0.205, 0.205, 0.045, 12)} c="#7a5a3a" position={[0, 0.04, 0]} />
+    </group>
+  ),
   party: () => (
     <group position={[0, 0.2, 0.02]} rotation={[0.15, 0, 0.1]}>
       <Part g={G.cone(0.15, 0.36, 10)} c="#ff5d8f" position={[0, 0.18, 0]} />
@@ -154,6 +175,7 @@ export function Characters({ runtime }: { runtime: Runtime }) {
   const structure = useUI((s) => s.structure);
   const hat = useUI((s) => s.hat);
   const generation = useUI((s) => s.generation);
+  const world = useUI((s) => s.world);
   const workers = useMemo(() => {
     void structure;
     return [...runtime.game.state.workers];
@@ -167,7 +189,7 @@ export function Characters({ runtime }: { runtime: Runtime }) {
       {/* Keyed by look: the baked character mesh is rebuilt when it changes. */}
       <Character key={`player-${hat}-${generation}`} get={() => runtime.game.state.player} look={player} dust />
       {workers.map((w) => (
-        <Character key={w.id} get={() => runtime.game.actor(w.id)} look={LOOKS[w.def.job.kind]} />
+        <Character key={w.id} get={() => runtime.game.actor(w.id)} look={(world === "city" && CITY_LOOKS[w.def.job.kind]) || LOOKS[w.def.job.kind]} />
       ))}
     </group>
   );
@@ -181,9 +203,11 @@ interface CharacterProps {
   dust?: boolean;
   /** Rendered in the right hand (e.g. a shopping bag). */
   hand?: React.ReactNode;
+  /** Busy with the hands (a guest eating at a table). */
+  busy?: () => boolean;
 }
 
-export function Character({ get, look, scaleOf, dust = false, hand }: CharacterProps) {
+export function Character({ get, look, scaleOf, dust = false, hand, busy }: CharacterProps) {
   const root = useRef<Group>(null);
   const body = useRef<Group>(null);
   const legL = useRef<Group>(null);
@@ -217,7 +241,7 @@ export function Character({ get, look, scaleOf, dust = false, hand }: CharacterP
     const ph = a.walk * 2.2;
     const swing = moving ? Math.min(1, speed / 3) : 0;
     const carrying = a.stack.length > 0;
-    const working = w?.phase === "operate";
+    const working = w?.phase === "operate" || !!busy?.();
 
     legL.current!.rotation.x = Math.sin(ph) * 0.75 * swing;
     legR.current!.rotation.x = -Math.sin(ph) * 0.75 * swing;

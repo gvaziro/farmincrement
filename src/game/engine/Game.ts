@@ -4,11 +4,15 @@
  */
 import { MACHINE_MAX_LEVEL, MARKET_MAX_LEVEL, PLAYER_STATS, TRUCK_MAX_LEVEL, WORKER_STATS, machineUpgradeCost, marketPriceMult, marketUpgradeCost, starsForEarnings, statCost, statMaxLevel, truckUpgradeCost, type PlayerStatId, type WorkerStatId } from "../data/balance";
 import { CHALLENGES, DIY_HIRE_MULT, PRICEY_LAND_MULT, STINGY_MARKET, challengeStars, isChallengeId, type ChallengeId } from "../data/challenges";
+import { ADS_COST_MULT, CITY_BOUNDS, CITY_SPAWN, FAME_PER_FLOOR, FARM_SPAWN, FAME_PER_SHOP, FLOOR_COSTS, SHOP_MAX_LEVEL, SHOP_STARS, TOWER, TOWER_FLOORS, TOWER_STARS, VAN_COST_MULT, VAN_MAX_LEVEL, shelfById, shopUpgradeCost, tableById } from "../data/city";
 import { albumMult } from "../data/finds";
 import { ITEMS, type ItemId } from "../data/items";
-import { INITIAL_MACHINES, fieldById, machineById, machineUpgradeBase, zoneById, type PadDef } from "../data/layout";
+import { INITIAL_MACHINES, fieldById, machineById, machineUpgradeBase, zoneById, type PadDef, type ZoneId } from "../data/layout";
 import { isHatId, type HatId } from "../data/hats";
 import { FAME_PER_LEVEL, LANDS_ORDER, PERKS, TREASURY_MONEY, WORKSHOP_PER_LEVEL, type PerkId } from "../data/legacy";
+import { OFFLINE_MIN_SECONDS, offlineFor } from "./offline";
+import { createCityState, createShelf, createShop, createTable, shopForZone } from "./city";
+import { farmPenny, updateCity } from "./systems/city";
 import { RUSH_MULT } from "../data/surprises";
 import { unlockedHats, updateAchievements } from "./achievements";
 import { effectivePerk, frozenSeason, hasChallenge } from "./challenges";
@@ -26,7 +30,8 @@ import { updateOrders } from "./systems/orders";
 import { blowWhistle, canWhistle, surpriseTargets, updateSurprises } from "./systems/surprises";
 import { updateWorkers } from "./systems/workers";
 import { TUTORIAL_DONE, TUTORIAL_PADS_STEP, updateTutorial } from "./tutorial";
-import type { Actor, Anchor, FlightItem, GameEvent, GameState, InteractZone, Machine, PadState } from "./types";
+import { cashSlot, shelfSlot } from "./systems/city";
+import type { Actor, Anchor, FlightItem, GameEvent, GameState, InteractZone, Machine, PadState, ShelfState, ShopState } from "./types";
 import {
   applyStats,
   buildInteractZones,
@@ -46,8 +51,14 @@ const MAX_FLIGHTS = 900;
 const CHRONICLE_MAX = 60;
 
 export class Game {
+  /** The world being played right now. */
   state: GameState;
-  readonly nav = new NavGrid();
+  /** The other world, asleep until the bus goes back. */
+  sleeping: GameState | null;
+  /** When the sleeping world was left (ms), for its offline income. */
+  sleepingSince = 0;
+  private readonly farmNav = new NavGrid();
+  private cityNav: NavGrid | null = null;
   /** Movement intent from keyboard / joystick, magnitude ≤ 1. */
   readonly input = { x: 0, z: 0 };
 
@@ -57,9 +68,25 @@ export class Game {
   private interactMap = new Map<string, InteractZone>();
   private actorMap = new Map<string, Actor>();
 
-  constructor(state: GameState = createInitialState()) {
+  constructor(state: GameState = createInitialState(), sleeping: GameState | null = null, sleepingSince = 0) {
     this.state = state;
+    this.sleeping = sleeping;
+    this.sleepingSince = sleepingSince;
     this.rebuild();
+  }
+
+  /** Navigation of the world being played. */
+  get nav() {
+    if (this.state.world === "farm") return this.farmNav;
+    return (this.cityNav ??= new NavGrid(CITY_BOUNDS));
+  }
+  /** The farm, wherever the player is. */
+  get farm() {
+    return this.state.world === "farm" ? this.state : this.sleeping!;
+  }
+  /** The city, once the family has moved there. */
+  get city() {
+    return this.state.world === "city" ? this.state : this.sleeping;
   }
 
   // ── lookups ───────────────────────────────────────────────────────────
@@ -74,6 +101,12 @@ export class Game {
   }
   actor(id: string) {
     return this.actorMap.get(id);
+  }
+  shop(id: string): ShopState | undefined {
+    return this.state.city?.shops.find((s) => s.id === id);
+  }
+  shelf(id: string): ShelfState | undefined {
+    return this.shop(shelfById(id)?.shop)?.shelves.find((s) => s.id === id);
   }
 
   emit(e: GameEvent) {
@@ -91,6 +124,7 @@ export class Game {
     this.machineMap = new Map(st.machines.map((m) => [m.id, m]));
     this.padMap = new Map(st.pads.map((p) => [p.id, p]));
     this.actorMap = new Map<string, Actor>([["player", st.player], ...st.workers.map((w) => [w.id, w] as [string, Actor])]);
+    if (st.city) for (const c of st.city.customers) this.actorMap.set(c.id, c);
 
     const padsAllowed = st.tutorial >= TUTORIAL_PADS_STEP;
     for (const p of st.pads) {
@@ -151,8 +185,11 @@ export class Game {
     updateFields(this, dt);
     updateInteractions(this, dt);
     updateMachines(this, dt);
-    updateDepot(this, dt);
-    updateOrders(this, dt);
+    if (st.city) updateCity(this, dt);
+    else {
+      updateDepot(this, dt);
+      updateOrders(this, dt);
+    }
     updateSurprises(this, dt);
     this.updateFlights(dt);
     for (const pad of st.pads) if (pad.visible) pad.appearT += dt;
@@ -238,6 +275,16 @@ export class Game {
         if (t) t.incoming = Math.max(0, t.incoming - 1);
         break;
       }
+      case "shelf": {
+        const s = this.shelf(to.shelf);
+        if (s) s.incoming = Math.max(0, s.incoming - 1);
+        break;
+      }
+      case "cash": {
+        const s = this.shop(to.shop);
+        if (s) s.incomingCash = Math.max(0, s.incomingCash - 1);
+        break;
+      }
     }
     if (f.land) this.emit(f.land);
   }
@@ -271,6 +318,12 @@ export class Game {
         const actor = this.actorMap.get(a.actor);
         return actor ? { x: actor.x, y: 1.1, z: actor.z } : { x: 0, y: 0, z: 0 };
       }
+      case "shelf":
+        return shelfSlot(shelfById(a.shelf), a.slot);
+      case "cash": {
+        const s = this.shop(a.shop);
+        return s ? cashSlot(s, a.slot) : { x: 0, y: 0, z: 0 };
+      }
       case "point":
         return a;
     }
@@ -296,7 +349,12 @@ export class Game {
 
   // ── economy ───────────────────────────────────────────────────────────
   priceMult() {
-    return marketPriceMult(this.state.marketLevel) * (1 + this.perk("fame") * FAME_PER_LEVEL);
+    return marketPriceMult(this.state.marketLevel) * (1 + this.perk("fame") * FAME_PER_LEVEL) * (1 + (this.state.world === "farm" ? this.cityFame() : 0));
+  }
+  /** How much the family's business in town adds to the farm's prices. */
+  cityFame() {
+    const c = this.city?.city;
+    return c ? c.shops.length * FAME_PER_SHOP + c.floors * FAME_PER_FLOOR : 0;
   }
   /** What an item is worth: market level, fame, the season's demand and the album's sets. */
   sellValue(item: ItemId) {
@@ -335,6 +393,21 @@ export class Game {
         const lvl = this.state.depot?.truckLevel ?? 1;
         return lvl >= TRUCK_MAX_LEVEL ? null : truckUpgradeCost(lvl);
       }
+      case "shopLevel":
+      case "shopAds":
+      case "shopVan": {
+        const s = this.shop(e.shop);
+        // A pad for a business that has not opened yet is simply not on sale.
+        if (!s) return p.def.cost;
+        const level = e.type === "shopLevel" ? s.level : e.type === "shopAds" ? s.ads : s.van.level;
+        const max = e.type === "shopVan" ? VAN_MAX_LEVEL : SHOP_MAX_LEVEL;
+        const mult = e.type === "shopAds" ? ADS_COST_MULT : e.type === "shopVan" ? VAN_COST_MULT : 1;
+        return level >= max ? null : shopUpgradeCost(s.def.upgradeBase * mult, level);
+      }
+      case "towerFloor": {
+        const floors = this.state.city?.floors ?? 0;
+        return floors >= TOWER_FLOORS ? null : FLOOR_COSTS[floors];
+      }
       default: {
         // Challenges: hands and land cost more.
         const st = this.state;
@@ -351,6 +424,10 @@ export class Game {
     if (e.type === "upgradeMachine") return (this.machineMap.get(e.id)?.level ?? 1) + 1;
     if (e.type === "upgradeMarket") return this.state.marketLevel + 1;
     if (e.type === "upgradeTruck") return (this.state.depot?.truckLevel ?? 1) + 1;
+    if (e.type === "shopLevel") return (this.shop(e.shop)?.level ?? 1) + 1;
+    if (e.type === "shopAds") return (this.shop(e.shop)?.ads ?? 1) + 1;
+    if (e.type === "shopVan") return (this.shop(e.shop)?.van.level ?? 1) + 1;
+    if (e.type === "towerFloor") return (this.state.city?.floors ?? 0) + 1;
     return null;
   }
 
@@ -376,9 +453,13 @@ export class Game {
           if (!st.fields.some((f) => f.id === fid)) st.fields.push(createField(fieldById(fid), true));
         }
         if (e.id === "depot" && !st.depot) st.depot = createDepot();
+        pad.done = true;
+        if (st.city) {
+          this.openPlot(e.id);
+          break;
+        }
         this.emit({ type: "toast", text: `Новая земля: ${z.name}!`, icon: z.icon });
         this.recordTime(e.id);
-        pad.done = true;
         break;
       }
       case "worker": {
@@ -416,15 +497,145 @@ export class Game {
         break;
       case "statue":
         st.statue = true;
+        st.bus = true;
         pad.done = true;
         this.emit({ type: "statue" });
         this.recordTime("statue");
+        break;
+      case "city":
+        this.openCityThings(e);
+        pad.done = true;
+        break;
+      case "shopLevel":
+      case "shopAds":
+      case "shopVan": {
+        const s = this.shop(e.shop);
+        if (s) {
+          if (e.type === "shopLevel") levelUp = ++s.level;
+          else if (e.type === "shopAds") levelUp = ++s.ads;
+          else levelUp = ++s.van.level;
+        }
+        pad.paid = 0;
+        break;
+      }
+      case "towerFloor":
+        this.buildFloor();
+        levelUp = st.city?.floors ?? 1;
+        pad.paid = 0;
         break;
     }
     st.stats.purchases++;
     if (levelUp !== null) this.emit({ type: "levelUp", pad: pad.id, level: levelUp, x: def.x, z: def.z });
     else this.emit({ type: "purchase", pad: pad.id, kind: def.kind, label: def.label, x: def.x, z: def.z });
     this.rebuild();
+  }
+
+  // ── the city's purchases ──────────────────────────────────────────────
+  /** A new plot in town: a business opens and the family gets a little famous. */
+  private openPlot(id: ZoneId) {
+    const st = this.state;
+    const def = shopForZone(id);
+    if (def && !st.city!.shops.some((s) => s.id === def.id)) {
+      st.city!.shops.push(createShop(def));
+      st.prestige.stars += SHOP_STARS;
+      st.prestige.totalStars += SHOP_STARS;
+      this.emit({ type: "shopOpen", shop: def.id, stars: SHOP_STARS });
+    } else {
+      this.emit({ type: "toast", text: `Новый участок: ${zoneById(id).name}!`, icon: zoneById(id).icon });
+    }
+  }
+
+  private openCityThings(e: Extract<PadDef["effect"], { type: "city" }>) {
+    const st = this.state;
+    for (const id of e.machines) {
+      if (!this.machineMap.has(id)) st.machines.push(createMachine(machineById(id), true, machineById(id).type.startsWith("supply_") ? 1 : 1 + this.perk("ancestors")));
+    }
+    for (const id of e.shelves) {
+      const def = shelfById(id);
+      const shop = this.shop(def.shop);
+      if (shop && !shop.shelves.some((s) => s.id === id)) shop.shelves.push(createShelf(def, true));
+    }
+    for (const id of e.tables) {
+      const def = tableById(id);
+      const shop = this.shop(def.shop);
+      if (shop && !shop.tables.some((t) => t.id === id)) shop.tables.push(createTable(def, true));
+    }
+    if (e.delivery) {
+      const shop = this.shop(e.delivery);
+      if (shop) shop.delivery = true;
+    }
+  }
+
+  private buildFloor() {
+    const st = this.state;
+    const city = st.city;
+    if (!city || city.finished) return;
+    city.floors++;
+    this.emit({ type: "floor", floor: city.floors, x: TOWER.x, z: TOWER.z });
+    if (city.floors >= TOWER_FLOORS) {
+      city.finished = true;
+      st.prestige.stars += TOWER_STARS;
+      st.prestige.totalStars += TOWER_STARS;
+      this.emit({ type: "chapterDone", stars: TOWER_STARS });
+    }
+  }
+
+  // ── the bus ───────────────────────────────────────────────────────────
+  /** The family built the statue once: the bus runs both ways from then on. */
+  canTravel() {
+    return this.state.bus;
+  }
+
+  /**
+   * Swap worlds. The world left behind falls asleep; the one you return to gets
+   * offline income for the time apart. The very first trip founds the city.
+   * Returns what the managers earned meanwhile, for the "while you were away" window.
+   */
+  travel(now = Date.now()) {
+    if (!this.canTravel()) return null;
+    // Everything in the air lands first: counters must not wait for it for ever.
+    for (const f of this.state.flights) this.landFlight(f);
+    this.state.flights.length = 0;
+    const from = this.state;
+    const to = this.sleeping ?? createCityState();
+    const first = !this.sleeping;
+    const away = first ? 0 : Math.max(0, (now - this.sleepingSince) / 1000);
+    this.sleeping = from;
+    this.sleepingSince = now;
+    this.state = to;
+    this.shareFamily(from, to);
+    if (to.city) to.city.penny = farmPenny(from);
+    // Views notice the swap by this counter: it must keep growing.
+    to.structure = Math.max(from.structure, to.structure) + 1;
+    this.input.x = 0;
+    this.input.z = 0;
+    from.player.vx = 0;
+    from.player.vz = 0;
+    from.player.moving = false;
+    from.player.zoneId = null;
+    to.player.zoneId = null;
+    // You arrive beside the stop: standing on it would open its window again.
+    const spawn = to.world === "city" ? CITY_SPAWN : FARM_SPAWN;
+    to.player.x = spawn.x;
+    to.player.z = spawn.z;
+    this.events = [];
+    this.rebuild();
+    if (first || away < OFFLINE_MIN_SECONDS) return null;
+    const pay = offlineFor(to, away, this.perk("holiday"));
+    if (pay.money < 1) return null;
+    this.earn(pay.money, false);
+    return pay;
+  }
+
+  /** Trophies, the album, the hat and the family's stars and shop belong to both worlds. */
+  private shareFamily(from: GameState, to: GameState) {
+    to.achievements = from.achievements;
+    to.album = from.album;
+    to.hat = from.hat;
+    to.prestige = from.prestige;
+    to.legacy = from.legacy;
+    to.bus = true;
+    from.bus = true;
   }
 
   /**
@@ -449,7 +660,7 @@ export class Game {
     let best: PadState | null = null;
     let bestCost = Infinity;
     for (const p of this.state.pads) {
-      if (!p.visible || p.def.repeatable) continue;
+      if (!p.visible || (p.def.repeatable && p.def.effect.type !== "towerFloor")) continue;
       const c = this.padCost(p) ?? Infinity;
       if (c < bestCost) {
         bestCost = c;
@@ -531,6 +742,7 @@ export class Game {
     if (!old.statue) return false;
     const next = createInitialState();
     const earned = this.prestigeStars();
+    next.bus = true;
     next.prestige = {
       stars: old.prestige.stars + earned,
       totalStars: old.prestige.totalStars + earned,
@@ -554,6 +766,8 @@ export class Game {
     next.tutorial = TUTORIAL_DONE;
     // Keep the counter monotonic so views always notice the swap.
     next.structure = old.structure + 1;
+    // The manager's "копеечка" now comes from the new, smaller farm.
+    if (this.sleeping?.city) this.sleeping.city.penny = farmPenny(next);
     // The new generation starts on a fresh spring morning (or a winter one).
     next.dayClock = 0;
     next.season = calendarSeason(0, frozenSeason(next));

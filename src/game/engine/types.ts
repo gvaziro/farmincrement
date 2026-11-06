@@ -1,6 +1,7 @@
 import type { Rect } from "../core/math";
 import type { PlayerStatId, WorkerStatId } from "../data/balance";
 import type { ChallengeId } from "../data/challenges";
+import type { ShelfDef, ShopDef, ShopId, TableDef } from "../data/city";
 import type { CropDef } from "../data/crops";
 import type { HatId } from "../data/hats";
 import type { PerkId } from "../data/legacy";
@@ -154,7 +155,7 @@ export interface Depot {
   trucks: Truck[];
 }
 
-export type InteractKind = "machineIn" | "machineOut" | "market" | "depot" | "pad" | "farmhouse" | "trash" | "merchant";
+export type InteractKind = "machineIn" | "machineOut" | "market" | "depot" | "pad" | "farmhouse" | "trash" | "merchant" | "bus" | "shelf" | "till" | "cash" | "delivery";
 
 /** What a golden plant gives: a sales rush, a bag of money or every field ripe at once. */
 export type GoldenReward = "rush" | "money" | "bloom";
@@ -173,9 +174,11 @@ export type Anchor =
   | { kind: "depot"; slot: number }
   | { kind: "truck"; truck: string; slot: number }
   | { kind: "actor"; actor: string }
-  | { kind: "point"; x: number; y: number; z: number };
+  | { kind: "point"; x: number; y: number; z: number }
+  | { kind: "shelf"; shelf: string; slot: number }
+  | { kind: "cash"; shop: string; slot: number };
 
-export type FlightItem = ItemId | "coin";
+export type FlightItem = ItemId | "coin" | "cash";
 
 export interface Flight {
   item: FlightItem;
@@ -219,6 +222,10 @@ export interface Stats {
   whistles: number;
   /** Family records beaten (a plot or the statue sooner than ever). */
   records: number;
+  /** City: customers served at a till. */
+  served: number;
+  /** City: goods handed to couriers. */
+  delivered: number;
 }
 
 /** One generation in the family chronicle. */
@@ -287,7 +294,114 @@ export interface Surprises {
   whistleCd: number;
 }
 
+// ── the city ────────────────────────────────────────────────────────────
+export interface ShelfState {
+  id: string;
+  def: ShelfDef;
+  count: number;
+  incoming: number;
+  /** Seconds since it was built. */
+  spawnT: number;
+}
+
+export interface TableState {
+  id: string;
+  def: TableDef;
+  /** Guests on each of the two seats (null = free). */
+  seats: [Customer | null, Customer | null];
+  spawnT: number;
+}
+
+export type VanPhase = "away" | "arrive" | "unload" | "leave";
+
+/** The farm's van: drives up the road, unloads onto the business's pallets, drives on. */
+export interface Van {
+  phase: VanPhase;
+  t: number;
+  x: number;
+  z: number;
+  level: number;
+  /** Goods left to unload on this trip. */
+  load: number;
+  cd: number;
+}
+
+export interface ShopState {
+  id: ShopId;
+  def: ShopDef;
+  level: number;
+  ads: number;
+  van: Van;
+  shelves: ShelfState[];
+  tables: TableState[];
+  /** Money waiting to be picked up, and the bundles it is shown as. */
+  cash: number;
+  bundles: number;
+  incomingCash: number;
+  /** Customers in line, the first one is at the till. */
+  queue: Customer[];
+  /** Seconds until the next customer. */
+  spawnT: number;
+  /** Progress with the customer at the till, in seconds. */
+  serveT: number;
+  /** A hired cashier is standing at the till. */
+  cashier: boolean;
+  /** A hired collector is looking after the money table. */
+  collector: boolean;
+  delivery: boolean;
+  /** Seconds of "the whole town is talking about it" left. */
+  buzz: number;
+  /** 1 → 0 when a customer has been served. */
+  pulse: number;
+}
+
+export type CustomerPhase = "none" | "enter" | "toShelf" | "pick" | "toQueue" | "queue" | "toTable" | "eat" | "leave" | "out";
+
+/** Someone who came to buy something. Pooled: renderers keep one character per slot. */
+export interface Customer extends Actor {
+  shop: ShopId | null;
+  cphase: CustomerPhase;
+  scale: number;
+  path: PathPoint[];
+  pathIdx: number;
+  /** What is still on the shopping list; the first one is being looked for. */
+  want: ItemId[];
+  /** Seconds left at an empty counter. */
+  patience: number;
+  /** Generic countdown: browsing, eating. */
+  t: number;
+  /** What the goods on the stack cost. */
+  bill: number;
+  /** Paid and carrying a bag. */
+  bag: boolean;
+  /** At a table, eating this. */
+  dish: ItemId | null;
+  seat: { table: TableState; seat: 0 | 1 } | null;
+}
+
+export interface CityState {
+  shops: ShopState[];
+  customers: Customer[];
+  /** Floors of the tower built so far. */
+  floors: number;
+  /** The tower is finished: the chapter is over. */
+  finished: boolean;
+  /** The farm's "копеечка": money per second, money on its way, seconds to the next payment. */
+  penny: number;
+  pennyAcc: number;
+  pennyT: number;
+  bloggerIn: number;
+  /** Rush hour right now (for a toast when it begins). */
+  rushHour: boolean;
+}
+
 export interface GameState {
+  /** Which map this is: the farm, or the city of chapter II. */
+  world: "farm" | "city";
+  /** The city's own entities; null on the farm. */
+  city: CityState | null;
+  /** The family has built the statue once: the bus to the city runs. */
+  bus: boolean;
   time: number;
   money: number;
   player: Player;
@@ -390,7 +504,21 @@ export type GameEvent =
   /** A plot (zone id) or the statue ("statue") came sooner than the family record. */
   | { type: "record"; key: string; time: number; prev: number }
   /** Autumn: a harvest gave one item extra. */
-  | { type: "bonusHarvest"; item: ItemId; x: number; z: number; player: boolean };
+  | { type: "bonusHarvest"; item: ItemId; x: number; z: number; player: boolean }
+  /** City: a customer paid at the till. */
+  | { type: "served"; shop: ShopId; value: number; x: number; z: number }
+  /** City: a tip landed on the money table. */
+  | { type: "tip"; value: number; x: number; z: number }
+  /** City: nobody had what this customer wanted. */
+  | { type: "sad"; x: number; z: number }
+  | { type: "delivered"; value: number; x: number; z: number }
+  /** The farm's "копеечка" arrived. */
+  | { type: "penny"; value: number }
+  | { type: "rushHour" }
+  | { type: "buzz"; shop: ShopId; state: "start" | "end" }
+  | { type: "floor"; floor: number; x: number; z: number }
+  | { type: "chapterDone"; stars: number }
+  | { type: "shopOpen"; shop: ShopId; stars: number };
 
 export interface OrderLine {
   item: ItemId;

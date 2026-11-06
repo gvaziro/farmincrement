@@ -91,8 +91,17 @@ const geo = {
     ]),
 };
 
+const geoCache = new Map<string, BufferGeometry>();
+
+/** Built once for the whole session: the bus brings the farm back again and again. */
 function useGeo<K extends keyof typeof geo>(k: K, arg?: string) {
-  return useMemo(() => (arg ? (geo[k] as (a: string) => BufferGeometry)(arg) : (geo[k] as () => BufferGeometry)()), [k, arg]);
+  const key = `${k}|${arg ?? ""}`;
+  let g = geoCache.get(key);
+  if (!g) {
+    g = arg ? (geo[k] as (a: string) => BufferGeometry)(arg) : (geo[k] as () => BufferGeometry)();
+    geoCache.set(key, g);
+  }
+  return g;
 }
 
 // ── layout ──────────────────────────────────────────────────────────────
