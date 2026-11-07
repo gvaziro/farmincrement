@@ -30,7 +30,22 @@ export type MachineTypeId =
   | "c_honeycake"
   | "c_tailor"
   | "c_packer"
-  | `supply_${SupplyItem}`;
+  | `supply_${SupplyItem}`
+  // The island's huts.
+  | "i_juicer"
+  | "i_icepop"
+  | "i_dryer"
+  | "i_press"
+  | "i_smoothie"
+  | "i_grill"
+  | "i_sugarmill"
+  | "i_candy"
+  | "i_cocoadryer"
+  | "i_chocolate"
+  | "i_roaster"
+  | "i_gelato"
+  | "i_pearlshop"
+  | "i_jeweler";
 
 /** What the farm van brings to the city: each gets a pallet of its own. */
 export const SUPPLY_ITEMS = ["bread", "egg", "milk", "juice", "cheese", "flour", "sauce", "smokedfish", "canned", "cake", "honey", "yarn", "sweater", "jam", "icecream", "lantern", "pie"] as const satisfies readonly ItemId[];
@@ -100,8 +115,49 @@ function supplyType(item: SupplyItem): MachineTypeDef {
 
 const SUPPLY_TYPES = Object.fromEntries(SUPPLY_ITEMS.map((i) => [`supply_${i}`, supplyType(i)])) as Record<`supply_${SupplyItem}`, MachineTypeDef>;
 
+/** A one-input island hut. */
+function hut(id: MachineTypeId, name: string, input: ItemId, output: ItemId, time: number, w = 3.6, d = 3.2): MachineTypeDef {
+  return { id, name, inputs: [{ item: input, amount: 1 }], output: { item: output, amount: 1 }, time, height: 4.0, ...std(w, d) };
+}
+/** An island hut with two or three inputs on a long pallet row. */
+function bigHut(id: MachineTypeId, name: string, inputs: ItemId[], output: ItemId, time: number): MachineTypeDef {
+  const three = inputs.length > 2;
+  return {
+    id,
+    name,
+    inputs: inputs.map((item) => ({ item, amount: 1 })),
+    output: { item: output, amount: 1 },
+    time,
+    height: 4.4,
+    ...std(4.6, 3.6),
+    inZone: three ? [-1.6, 3.1, 3.6, 2] : [-1.4, 3.1, 3.2, 2],
+    outZone: three ? [2.6, 3.1, 2, 2] : [2.4, 3.1, 2, 2],
+    upPad: [3.6, -0.2],
+  };
+}
+
+type IslandMachineId = "i_juicer" | "i_icepop" | "i_dryer" | "i_press" | "i_smoothie" | "i_grill" | "i_sugarmill" | "i_candy" | "i_cocoadryer" | "i_chocolate" | "i_roaster" | "i_gelato" | "i_pearlshop" | "i_jeweler";
+
+const ISLAND_TYPES: Record<IslandMachineId, MachineTypeDef> = {
+  i_juicer: hut("i_juicer", "Соковыжималка", "pineapple", "ajuice", 1.2, 3.2, 3.2),
+  i_icepop: hut("i_icepop", "Ледник", "ajuice", "icepop", 1.6, 3.6, 3.0),
+  i_dryer: hut("i_dryer", "Сушилка", "banana", "chips", 1.6, 3.6, 3.0),
+  i_press: hut("i_press", "Кокосовый пресс", "coconut", "cmilk", 1.8),
+  i_smoothie: bigHut("i_smoothie", "Смузи-бар", ["banana", "cmilk"], "smoothie", 2.6),
+  i_grill: hut("i_grill", "Гриль на пляже", "fish", "grillfish", 2.2),
+  i_sugarmill: hut("i_sugarmill", "Сахарная мельница", "cane", "sugar", 2.2),
+  i_candy: bigHut("i_candy", "Конфетная", ["sugar", "cmilk"], "candy", 2.8),
+  i_cocoadryer: hut("i_cocoadryer", "Сушка какао", "cocoa", "cocoabeans", 2.4),
+  i_chocolate: bigHut("i_chocolate", "Шоколадная", ["cocoabeans", "sugar", "cmilk"], "chocolate", 3.0),
+  i_roaster: hut("i_roaster", "Обжарка", "coffee", "roasted", 2.6),
+  i_gelato: bigHut("i_gelato", "Джелатерия", ["vanilla", "cmilk", "sugar"], "gelato", 3.2),
+  i_pearlshop: hut("i_pearlshop", "Жемчужная мастерская", "oyster", "pearl", 2.8),
+  i_jeweler: hut("i_jeweler", "Ювелирная", "pearl", "necklace", 3.2),
+};
+
 export const MACHINE_TYPES: Record<MachineTypeId, MachineTypeDef> = {
   ...SUPPLY_TYPES,
+  ...ISLAND_TYPES,
   c_coffee: {
     id: "c_coffee",
     name: "Кофемашина",

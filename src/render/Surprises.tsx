@@ -11,7 +11,7 @@ import { goldenPlant } from "@/game/engine/systems/surprises";
 import type { Merchant, RunawayKind } from "@/game/engine/types";
 import type { Runtime } from "@/runtime/runtime";
 import { edgeArrowEls } from "@/ui/edgeArrows";
-import { ChickenModel, CowModel, Decal, SheepModel } from "./buildings/parts";
+import { ChickenModel, CowModel, Decal, MonkeyModel, SheepModel } from "./buildings/parts";
 import { fitFont, gameFont, getFontsVersion, outlinedText, roundRect } from "./canvasText";
 import { fx } from "./fx";
 import { itemIconImage, itemIconsVersion } from "./itemIcons";
@@ -393,7 +393,7 @@ function RunawayAnimal({ runtime, kind }: { runtime: Runtime; kind: RunawayKind 
   return (
     <group ref={root} visible={false}>
       <Plain>
-        {kind === "chicken" ? <ChickenModel headRef={setHead} /> : kind === "cow" ? <CowModel headRef={setHead} /> : <SheepModel headRef={setHead} />}
+        {kind === "chicken" ? <ChickenModel headRef={setHead} /> : kind === "cow" ? <CowModel headRef={setHead} /> : kind === "monkey" ? <MonkeyModel headRef={setHead} /> : <SheepModel headRef={setHead} />}
         <group ref={mark} visible={false}>
           <Part g={G.box(0.09, 0.3, 0.09)} c="#e8413c" position={[0, 0.2, 0]} shadow={false} />
           <Part g={G.box(0.09, 0.09, 0.09)} c="#e8413c" position={[0, -0.02, 0]} shadow={false} />

@@ -13,6 +13,7 @@ import { merge, P, part } from "./geom";
 import { G, Part, Plain } from "./kit";
 import { seasonVisual } from "./seasonLook";
 import { StaticBatch } from "./StaticBatch";
+import { Crowd, workerScale } from "./Crowd";
 
 export interface Look {
   shirt: string;
@@ -154,6 +155,28 @@ const FANCY_HATS = {
       <Part g={G.cyl(0.018, 0.024, 0.09, 5)} c="#8e2a1f" position={[0.03, 0.13, 0]} />
     </group>
   ),
+  hibiscus: () => (
+    <group position={[0, 0.16, 0]}>
+      <Part g={G.cyl(0.36, 0.38, 0.03, 14)} c="#f4e6b8" />
+      <Part g={G.cyl(0.2, 0.22, 0.16, 12)} c="#f4e6b8" position={[0, 0.09, 0]} />
+      <Part g={G.cyl(0.225, 0.225, 0.045, 12)} c="#3fa7a0" position={[0, 0.04, 0]} />
+      {[0, 1, 2, 3, 4].map((i) => {
+        const a = (i / 5) * Math.PI * 2;
+        return <Part key={i} g={G.sphere(0.055, 6, 4)} c="#ff4d6d" position={[-0.2 + Math.cos(a) * 0.06, 0.08, 0.14 + Math.sin(a) * 0.06]} />;
+      })}
+      <Part g={G.sphere(0.03, 5, 4)} c="#ffd23f" position={[-0.2, 0.1, 0.14]} />
+    </group>
+  ),
+  pirate: () => (
+    <group position={[0, 0.18, 0]}>
+      <Part g={G.cyl(0.24, 0.26, 0.16, 12)} c="#2b2b2b" position={[0, 0.06, 0]} />
+      {[0, 1, 2].map((i) => {
+        const a = (i / 3) * Math.PI * 2;
+        return <Part key={i} g={G.box(0.42, 0.18, 0.06)} c="#2b2b2b" position={[Math.sin(a) * 0.2, 0.12, Math.cos(a) * 0.2]} rotation={[0, a, 0.15]} />;
+      })}
+      <Part g={G.box(0.1, 0.08, 0.02)} c="#ffd23f" position={[0, 0.12, 0.22]} />
+    </group>
+  ),
   bowler: () => (
     <group position={[0, 0.16, 0]}>
       <Part g={G.cyl(0.32, 0.33, 0.03, 14)} c="#2f3640" />
@@ -176,10 +199,7 @@ export function Characters({ runtime }: { runtime: Runtime }) {
   const hat = useUI((s) => s.hat);
   const generation = useUI((s) => s.generation);
   const world = useUI((s) => s.world);
-  const workers = useMemo(() => {
-    void structure;
-    return [...runtime.game.state.workers];
-  }, [runtime, structure]);
+  void structure;
   const player = useMemo<Look>(
     () => ({ ...LOOKS.player, shirt: FAMILY_SHIRTS[generation % FAMILY_SHIRTS.length], hat, hatColor: HATS[hat].color }),
     [hat, generation],
@@ -188,9 +208,15 @@ export function Characters({ runtime }: { runtime: Runtime }) {
     <group>
       {/* Keyed by look: the baked character mesh is rebuilt when it changes. */}
       <Character key={`player-${hat}-${generation}`} get={() => runtime.game.state.player} look={player} dust />
-      {workers.map((w) => (
-        <Character key={w.id} get={() => runtime.game.actor(w.id)} look={(world === "city" && CITY_LOOKS[w.def.job.kind]) || LOOKS[w.def.job.kind]} />
-      ))}
+      {/* Workers: one crowd of instances, however many are hired. */}
+      <Crowd
+        runtime={runtime}
+        collect={(out) => {
+          for (const w of runtime.game.state.workers) {
+            out.push({ actor: w, look: (world === "city" && CITY_LOOKS[w.def.job.kind]) || LOOKS[w.def.job.kind], scale: workerScale(w), working: w.phase === "operate", frame: true, bag: false });
+          }
+        }}
+      />
     </group>
   );
 }

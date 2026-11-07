@@ -1,6 +1,6 @@
 import type { ItemId } from "./items";
 
-export type CropId = "wheat" | "corn" | "grass" | "tomato" | "apple" | "flowers" | "fish" | "strawberry" | "pumpkin";
+export type CropId = "wheat" | "corn" | "grass" | "tomato" | "apple" | "flowers" | "fish" | "strawberry" | "pumpkin" | "pineapple" | "banana" | "coconut" | "cane" | "cocoa" | "coffee" | "vanilla" | "oyster";
 
 export interface CropDef {
   id: CropId;
@@ -33,6 +33,15 @@ export const CROPS: Record<CropId, CropDef> = {
   fish: { id: "fish", name: "Рыба", item: "fish", growTime: 4, kind: "water", fruits: 2, spacing: 1.9, soil: "#4fb4e0" },
   strawberry: { id: "strawberry", name: "Клубника", item: "strawberry", growTime: 5, kind: "plant", spacing: 1.0, soil: "#9c6438" },
   pumpkin: { id: "pumpkin", name: "Тыквы", item: "pumpkin", growTime: 7, kind: "plant", spacing: 1.3, soil: "#8a5a30" },
+  // The island.
+  pineapple: { id: "pineapple", name: "Ананасы", item: "pineapple", growTime: 5, kind: "plant", spacing: 1.05, soil: "#b8925a" },
+  banana: { id: "banana", name: "Бананы", item: "banana", growTime: 3.2, kind: "tree", fruits: 3, spacing: 2.4, soil: "#6cbf4e" },
+  coconut: { id: "coconut", name: "Кокосовые пальмы", item: "coconut", growTime: 3.6, kind: "tree", fruits: 3, spacing: 2.5, soil: "#d9c58a" },
+  cane: { id: "cane", name: "Сахарный тростник", item: "cane", growTime: 5, kind: "plant", spacing: 1.0, soil: "#8a6a3a" },
+  cocoa: { id: "cocoa", name: "Какао", item: "cocoa", growTime: 3.8, kind: "tree", fruits: 3, spacing: 2.4, soil: "#5aa83f" },
+  coffee: { id: "coffee", name: "Кофе", item: "coffee", growTime: 5.5, kind: "plant", spacing: 1.05, soil: "#7a5030" },
+  vanilla: { id: "vanilla", name: "Ваниль", item: "vanilla", growTime: 6, kind: "plant", spacing: 1.05, soil: "#6a8a3a" },
+  oyster: { id: "oyster", name: "Устрицы", item: "oyster", growTime: 5, kind: "water", fruits: 2, spacing: 1.9, soil: "#3fb4d8" },
 };
 
 /** Extra catch radius for fishing spots: you fish from the shore, not in the water. */

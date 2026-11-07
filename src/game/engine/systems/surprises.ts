@@ -7,7 +7,8 @@
 import { dist2, nextRandom } from "../../core/math";
 import { CITY_MERCHANT_SPOTS } from "../../data/city";
 import { GOLDEN_PER_LEVEL, VOICE_REST_PER_LEVEL, VOICE_TIME_PER_LEVEL } from "../../data/legacy";
-import { MERCHANT_SPOTS, type ZoneId } from "../../data/layout";
+import type { ZoneId } from "../../data/layout";
+import { layoutOf } from "../../data/worlds";
 import {
   GOLDEN_EVERY,
   GOLDEN_LIFE,
@@ -20,7 +21,6 @@ import {
   RUNAWAY_CATCH,
   RUNAWAY_EVERY,
   RUNAWAY_FLEE,
-  RUNAWAY_HOMES,
   RUNAWAY_LIFE,
   RUNAWAY_MONEY_SECONDS,
   RUNAWAY_RANGE,
@@ -225,7 +225,7 @@ function spawnMerchant(game: Game) {
   const s = st.surprises;
   const p = st.player;
   // Plots the farm owns, with room for the cart that is not under the farmer's feet.
-  const spots: Partial<Record<ZoneId, { x: number; z: number }>> = st.world === "city" ? CITY_MERCHANT_SPOTS : MERCHANT_SPOTS;
+  const spots: Partial<Record<ZoneId, { x: number; z: number }>> = st.world === "city" ? CITY_MERCHANT_SPOTS : layoutOf(st).merchantSpots;
   const zones = (Object.keys(spots) as ZoneId[]).filter((z) => {
     const spot = spots[z]!;
     return st.zones.has(z) && dist2(spot.x, spot.z, p.x, p.z) > 16;
@@ -339,9 +339,10 @@ function wanderTarget(game: Game, r: Runaway) {
 }
 
 /** Pens that exist right now. */
-const openPens = (game: Game) => (Object.keys(RUNAWAY_HOMES) as RunawayKind[]).filter((k) => game.machine(RUNAWAY_HOMES[k]));
+const homesOf = (game: Game): Partial<Record<RunawayKind, string>> => (game.state.world === "city" ? {} : layoutOf(game.state).runawayHomes);
+const openPens = (game: Game) => (Object.keys(homesOf(game)) as RunawayKind[]).filter((k) => game.machine(homesOf(game)[k]!));
 
-export const isRunawayKind = (v: unknown): v is RunawayKind => typeof v === "string" && v in RUNAWAY_HOMES;
+export const isRunawayKind = (v: unknown): v is RunawayKind => v === "chicken" || v === "cow" || v === "sheep" || v === "monkey";
 
 /** The runaway itself: an actor without a stack, out of its pen (a machine). */
 export function createRunaway(kind: RunawayKind, pen: Machine, x?: number, z?: number): Runaway {
@@ -368,7 +369,7 @@ function spawnRunaway(game: Game) {
   const s = st.surprises;
   // Not from a gate the farmer is standing at: that would be a catch for free.
   const kinds = openPens(game).filter((k) => {
-    const gate = game.machine(RUNAWAY_HOMES[k])!.outRect;
+    const gate = game.machine(homesOf(game)[k]!)!.outRect;
     return dist2(gate.x, gate.z, st.player.x, st.player.z) > (RUNAWAY_SCARE + 1) ** 2;
   });
   if (kinds.length === 0) {
@@ -376,7 +377,7 @@ function spawnRunaway(game: Game) {
     return;
   }
   const kind = pick(s, kinds);
-  const r = createRunaway(kind, game.machine(RUNAWAY_HOMES[kind])!);
+  const r = createRunaway(kind, game.machine(homesOf(game)[kind]!)!);
   wanderTarget(game, r);
   s.runaway = r;
   game.emit({ type: "runaway", state: "escape", kind: r.kind, x: r.x, z: r.z });
@@ -437,7 +438,7 @@ export interface SurpriseTarget {
   icon: string;
 }
 
-const RUNAWAY_ICONS: Record<RunawayKind, string> = { chicken: "🐔", cow: "🐄", sheep: "🐑" };
+const RUNAWAY_ICONS: Record<RunawayKind, string> = { chicken: "🐔", cow: "🐄", sheep: "🐑", monkey: "🐒" };
 
 /** Where something is waiting for the farmer (for the arrows at the screen edge). */
 export function surpriseTargets(st: GameState): SurpriseTarget[] {

@@ -6,7 +6,7 @@ import { sfx } from "@/audio/sfx";
 import { formatClock, formatMoney } from "@/game/core/format";
 import { CHALLENGES, type ChallengeId } from "@/game/data/challenges";
 import { ITEMS, type ItemId } from "@/game/data/items";
-import { CITY_SEASON_PERK, CITY_DEMAND, shopById } from "@/game/data/city";
+import { CITY_SEASON_PERK, shopById } from "@/game/data/city";
 import { CITY_ZONES, MARKET, ZONE_D, ZONE_W, ZONES, zoneById } from "@/game/data/layout";
 import { dayNumber, dayPhase, nightFactor, timeOfDay } from "@/game/engine/daycycle";
 import { Game } from "@/game/engine/Game";
@@ -19,9 +19,12 @@ import { frozenSeason } from "@/game/engine/challenges";
 import { SEASONS } from "@/game/engine/seasons";
 import { WEATHER_NAMES, rainbowAt, weatherAt } from "@/game/engine/weather";
 import { offlineFor } from "@/game/engine/offline";
+import { demandOf } from "@/game/engine/demand";
 import { SAVE_KEY, isFutureSave, loadGame, serializeGame, type SaveData } from "@/game/engine/save";
 import { encodeSave } from "@/game/engine/saveCode";
 import { TUTORIAL, tutorialSteps, tutorialText } from "@/game/engine/tutorial";
+import { ISLAND_SEASONS } from "@/game/data/island";
+import type { WorldId } from "@/game/data/worlds";
 import type { GameEvent, RunawayKind } from "@/game/engine/types";
 import { whistleTimes } from "@/game/engine/systems/surprises";
 import { fx } from "@/render/fx";
@@ -319,16 +322,16 @@ export class Runtime {
    * Take the bus. The overlay comes first, the worlds swap behind it (the new
    * scene takes a moment to build), then the overlay lifts.
    */
-  travel() {
-    if (this.passive || !this.game.canTravel() || useUI.getState().travel) return;
-    const to = this.game.state.world === "farm" ? "city" : "farm";
-    const first = !this.game.city;
-    useUI.setState({ travel: to, panel: null });
+  travel(to?: WorldId) {
+    const dest = to ?? this.game.destinations()[0];
+    if (this.passive || !dest || !this.game.canTravel(dest) || useUI.getState().travel) return;
+    const first = !this.game.worldState(dest);
+    useUI.setState({ travel: dest, panel: null });
     sfx.play("whoosh");
     setTimeout(() => {
-      const pay = this.game.travel();
+      const pay = this.game.travel(dest);
       fx.reset();
-      useUI.setState({ world: this.game.state.world, bus: true, chapter: first });
+      useUI.setState({ world: this.game.state.world, bus: true, chapter: first ? dest : null });
       if (pay) useUI.setState({ offline: { money: pay.money, seconds: pay.seconds, where: this.game.state.world } });
       this.save();
       this.syncUI();
@@ -356,6 +359,8 @@ export class Runtime {
     const goal = goalPad ? { label: goalPad.def.label, icon: goalPad.def.icon, cost: g.padCost(goalPad) ?? 0 } : null;
     // Nothing left to buy on the farm: the next step is the bus.
     if (!hint && !goal && st.world === "farm" && st.bus && !g.city) hint = { icon: "🚌", text: "Новая глава: автобус в город ждёт на остановке" };
+    // The tower stands: the seaplane is waiting at any stop.
+    if (!hint && !goal && st.world !== "island" && g.islandOpen() && !g.island) hint = { icon: "🛩️", text: "Новая глава: на остановке ждёт гидроплан на остров" };
     const ui = useUI.getState();
     const money = Math.floor(st.money);
     const carried = st.player.stack.length;
@@ -557,6 +562,11 @@ export class Runtime {
           sfx.play("ding");
         }
         break;
+      case "isleOpen": {
+        const z = zoneById(e.zone);
+        pushToast(`Новый остров: ${z.name}! Семья прославилась: +${e.stars} ⭐`, z.icon);
+        break;
+      }
       case "shopOpen":
         pushToast(`Открываемся: ${shopById(e.shop).name}! Семья прославилась: +${e.stars} ⭐`, shopById(e.shop).icon);
         break;
@@ -570,7 +580,7 @@ export class Runtime {
         for (let i = 0; i < 4; i++) fx.confetti(p.x + (i - 1.5) * 2, 1, p.z, 60);
         fx.shake = 1;
         sfx.play("golden");
-        useUI.setState({ chapterDone: e.stars });
+        useUI.setState({ chapterDone: { stars: e.stars, world: e.world } });
         break;
       }
       case "toast":
@@ -611,8 +621,10 @@ export class Runtime {
       case "season": {
         const def = SEASONS[e.season];
         const inCity = this.game.state.world === "city";
-        pushToast(`${def.arrival}: ${inCity ? CITY_SEASON_PERK[e.season] : def.perk}`, def.icon);
-        pushToast(`Сезонный спрос ×1.5: ${(inCity ? CITY_DEMAND[e.season] : def.demand).map((i) => ITEMS[i].name.toLowerCase()).join(", ")}`, "📈");
+        const isle = this.game.state.world === "island";
+        const arrival = isle ? `На острове ${ISLAND_SEASONS[e.season].name.toLowerCase()}` : def.arrival;
+        pushToast(`${arrival}: ${inCity ? CITY_SEASON_PERK[e.season] : def.perk}`, isle ? ISLAND_SEASONS[e.season].icon : def.icon);
+        pushToast(`Сезонный спрос ×1.5: ${demandOf(this.game.state).map((i) => ITEMS[i].name.toLowerCase()).join(", ")}`, "📈");
         const p = this.game.state.player;
         fx.confetti(p.x, 1.2, p.z, 50, SEASON_CONFETTI[e.season]);
         sfx.play("season");
@@ -667,7 +679,7 @@ export class Runtime {
       case "runaway": {
         const a = ANIMALS[e.kind];
         if (e.state === "escape") {
-          pushToast(`${a.name} сбежала ${a.from}! Догони её`, a.icon);
+          pushToast(e.kind === "monkey" ? "Обезьяна стащила бананы из сушилки! Догони её" : `${a.name} сбежала ${a.from}! Догони её`, a.icon);
           sfx.play(a.sound);
         } else if (e.state === "caught") {
           pushToast(`${a.lines[Math.floor(Math.random() * a.lines.length)]} +$${formatMoney(e.value ?? 0)}`, a.icon);
@@ -745,6 +757,13 @@ const ANIMALS: Record<RunawayKind, { name: string; icon: string; from: string; s
     from: "из овчарни",
     sound: "baa",
     lines: ["«Бе-е! Я не убегала — я гуляла»", "«Бе-е-е! Ну и ладно»", "Поймана! «Бе?»"],
+  },
+  monkey: {
+    name: "Обезьяна",
+    icon: "🐒",
+    from: "с бананами из сушилки",
+    sound: "cluck",
+    lines: ["«У-у-а-а! Ладно, ладно, отдаю бананы»", "«У-а! Я только попробовать!»", "Поймана! «У-у?»"],
   },
 };
 

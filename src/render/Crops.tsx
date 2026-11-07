@@ -65,7 +65,16 @@ export function Crops({ runtime }: { runtime: Runtime }) {
       <PlantLayer runtime={runtime} crop="pumpkin" model="pumpkin" />
       <RipeFruits runtime={runtime} crop="tomato" model="tomatoFruits" />
       <RipeFruits runtime={runtime} crop="strawberry" model="strawberryFruits" />
-      <Trees runtime={runtime} />
+      {/* The island. */}
+      <PlantLayer runtime={runtime} crop="pineapple" model="pineapplePlant" />
+      <PlantLayer runtime={runtime} crop="cane" model="canePlant" />
+      <PlantLayer runtime={runtime} crop="coffee" model="coffeeBush" />
+      <PlantLayer runtime={runtime} crop="vanilla" model="vanillaVine" />
+      <RipeFruits runtime={runtime} crop="coffee" model="coffeeBerries" />
+      <RipeFruits runtime={runtime} crop="vanilla" model="vanillaFlowers" />
+      {TREE_LOOKS.map((t) => (
+        <Trees key={t.crop} runtime={runtime} {...t} />
+      ))}
       <FishSpots runtime={runtime} />
     </group>
   );
@@ -176,11 +185,19 @@ function RipeFruits({ runtime, crop, model }: { runtime: Runtime; crop: CropId; 
   return <instancedMesh ref={ref} args={[geometry, vmat, MAX]} castShadow frustumCulled={false} />;
 }
 
-function Trees({ runtime }: { runtime: Runtime }) {
+/** How each kind of tree looks: trunk, crown and fruit. */
+const TREE_LOOKS: { crop: CropId; trunk: CropModel; canopy: CropModel; fruit: CropModel }[] = [
+  { crop: "apple", trunk: "treeTrunk", canopy: "appleCanopy", fruit: "apple" },
+  { crop: "banana", trunk: "bananaTrunk", canopy: "bananaLeaves", fruit: "bananaBunch" },
+  { crop: "coconut", trunk: "palmTrunk", canopy: "palmLeaves", fruit: "coconutFruit" },
+  { crop: "cocoa", trunk: "treeTrunk", canopy: "cocoaCanopy", fruit: "cocoaPod" },
+];
+
+function Trees({ runtime, crop, trunk, canopy, fruit }: { runtime: Runtime; crop: CropId; trunk: CropModel; canopy: CropModel; fruit: CropModel }) {
   const trunks = useRef<InstancedMesh>(null);
   const canopies = useRef<InstancedMesh>(null);
   const apples = useRef<InstancedMesh>(null);
-  const geos = useMemo(() => ({ trunk: cropGeometry("treeTrunk"), canopy: cropGeometry("appleCanopy"), apple: cropGeometry("apple") }), []);
+  const geos = useMemo(() => ({ trunk: cropGeometry(trunk), canopy: cropGeometry(canopy), apple: cropGeometry(fruit) }), [trunk, canopy, fruit]);
 
   useFrame((state) => {
     const tm = trunks.current;
@@ -192,7 +209,7 @@ function Trees({ runtime }: { runtime: Runtime }) {
     let n = 0;
     let a = 0;
     for (const f of runtime.game.state.fields) {
-      if (f.crop.kind !== "tree") continue;
+      if (f.def.crop !== crop) continue;
       for (const p of f.plants) {
         const spawn = f.spawnT < 0.9 ? easeOutBack(Math.min(1, f.spawnT / 0.9)) : 1;
         // Shake when harvested.
@@ -250,12 +267,15 @@ function FishSpots({ runtime }: { runtime: Runtime }) {
   const rings = useRef<InstancedMesh>(null);
   const fish = useRef<InstancedMesh>(null);
   const holes = useRef<InstancedMesh>(null);
-  const geos = useMemo(() => ({ ring: cropGeometry("ripple"), fish: itemGeometry("fish") }), []);
+  const geos = useMemo(() => ({ ring: cropGeometry("ripple"), fish: itemGeometry("fish"), shell: itemGeometry("oyster") }), []);
+  const shells = useRef<InstancedMesh>(null);
   useFrame((state) => {
     const rm = rings.current;
     const fm = fish.current;
     const hm = holes.current;
-    if (!rm || !fm || !hm) return;
+    const sm = shells.current;
+    if (!rm || !fm || !hm || !sm) return;
+    let o = 0;
     const t = state.clock.elapsedTime;
     const ice = seasonVisual.winter;
     const gold = goldenOf(runtime);
@@ -285,6 +305,15 @@ function FishSpots({ runtime }: { runtime: Runtime }) {
           rm.setMatrixAt(r++, dummy.matrix);
         }
         if (!has) continue;
+        if (f.def.crop === "oyster") {
+          dummy.position.set(p.x, 0.04 + Math.sin(t * 2 + p.seed * 9) * 0.03, p.z);
+          dummy.rotation.set(0, p.seed * 6.28, 0);
+          dummy.scale.setScalar(1.2 * spawn * (p === gold ? 1.3 : 1));
+          dummy.updateMatrix();
+          sm.setColorAt(o, p === gold ? GOLD : WHITE);
+          sm.setMatrixAt(o++, dummy.matrix);
+          continue;
+        }
         const ph = ((t + p.seed * LEAP_PERIOD) % LEAP_PERIOD) / LEAP;
         if (ph >= 1) continue;
         const yaw = p.seed * Math.PI * 2;
@@ -300,6 +329,9 @@ function FishSpots({ runtime }: { runtime: Runtime }) {
     rm.count = r;
     fm.count = k;
     hm.count = h;
+    sm.count = o;
+    sm.instanceMatrix.needsUpdate = true;
+    if (sm.instanceColor) sm.instanceColor.needsUpdate = true;
     rm.instanceMatrix.needsUpdate = true;
     fm.instanceMatrix.needsUpdate = true;
     if (fm.instanceColor) fm.instanceColor.needsUpdate = true;
@@ -310,6 +342,7 @@ function FishSpots({ runtime }: { runtime: Runtime }) {
       <instancedMesh ref={holes} args={[holeGeo, holeMat, 40]} frustumCulled={false} receiveShadow />
       <instancedMesh ref={rings} args={[geos.ring, rippleMat, 80]} frustumCulled={false} renderOrder={2} />
       <instancedMesh ref={fish} args={[geos.fish, vmat, 40]} castShadow frustumCulled={false} />
+      <instancedMesh ref={shells} args={[geos.shell, vmat, 40]} castShadow frustumCulled={false} />
     </group>
   );
 }

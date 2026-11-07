@@ -12,11 +12,9 @@ import {
   BLOGGER_EVERY,
   BLOGGER_MULT,
   BLOGGER_TIME,
-  CITY_DEMAND,
   CUSTOMER_INTERVAL,
   CUSTOMER_PATIENCE,
   DELIVERY_MULT,
-  FARM_PENNY_EVERY,
   FARM_PENNY_PER_MACHINE,
   FLOOR_PRICE_BONUS,
   PARK_CUSTOMERS,
@@ -42,7 +40,7 @@ import {
 } from "../../data/city";
 import { ITEMS, isSellable, type ItemId } from "../../data/items";
 import { FAME_PER_LEVEL } from "../../data/legacy";
-import { DEMAND_MULT } from "../seasons";
+import { demandMult } from "../demand";
 import { timeOfDay } from "../daycycle";
 import { pileSlot, stackSlotLocal } from "../anchors";
 import { TUTORIAL_DONE } from "../tutorial";
@@ -84,7 +82,7 @@ export function queueSlot(shop: ShopState, place: number) {
 /** What the customer pays for `item` in this business right now. */
 export function cityPrice(game: Game, shop: ShopState, item: ItemId) {
   const st = game.state;
-  const demand = (CITY_DEMAND[st.season] as readonly ItemId[]).includes(item) ? DEMAND_MULT : 1;
+  const demand = demandMult(st, item);
   const floors = st.city ? 1 + st.city.floors * FLOOR_PRICE_BONUS : 1;
   return ITEMS[item].price * shopPriceMult(shop.level) * demand * floors * (1 + game.perk("fame") * FAME_PER_LEVEL) * game.rushMult();
 }
@@ -112,7 +110,6 @@ export function updateCity(game: Game, dt: number) {
   const st = game.state;
   const city = st.city;
   if (!city) return;
-  updatePenny(game, city, dt);
   const rush = isRushHour(timeOfDay(st.dayClock));
   if (rush && !city.rushHour && st.tutorial >= TUTORIAL_DONE) game.emit({ type: "rushHour" });
   city.rushHour = rush;
@@ -126,19 +123,6 @@ export function updateCity(game: Game, dt: number) {
     updateTill(game, shop, dt);
   }
   for (const c of city.customers) if (c.cphase !== "none") updateCustomer(game, c, dt);
-}
-
-function updatePenny(game: Game, city: CityState, dt: number) {
-  if (city.penny <= 0) return;
-  city.pennyAcc += city.penny * dt;
-  city.pennyT -= dt;
-  if (city.pennyT > 0) return;
-  city.pennyT = FARM_PENNY_EVERY;
-  const value = city.pennyAcc;
-  city.pennyAcc = 0;
-  if (value < 0.01) return;
-  game.earn(value, true);
-  game.emit({ type: "penny", value });
 }
 
 function updateBlogger(game: Game, city: CityState, dt: number) {
@@ -246,6 +230,10 @@ function updateArrivals(game: Game, city: CityState, shop: ShopState, dt: number
   shop.spawnT -= dt * customerRate(st, shop);
   if (shop.spawnT > 0) return;
   if (activeCustomers(city, shop.id) >= shopMaxCustomers(shop.ads, shop.tables.length)) {
+    shop.spawnT = 0;
+    return;
+  }
+  if (!city.customers.some((x) => x.cphase === "none")) {
     shop.spawnT = 0;
     return;
   }
@@ -586,10 +574,17 @@ export function collectCash(game: Game, a: Actor, shop: ShopState, isPlayer: boo
 }
 
 /** Couriers take the top item off the stack and ride away with it. */
+/** What a business delivers: what its counters sell and its kitchens make. */
+export function deliverable(game: Game, shop: ShopState, item: ItemId) {
+  if (!isSellable(item)) return false;
+  if (shop.shelves.some((s) => s.def.item === item)) return true;
+  return game.state.machines.some((m) => !m.type.supply && m.def.zone === shop.def.zone && m.type.output.item === item);
+}
+
 export function handToCourier(game: Game, a: Actor, shop: ShopState, isPlayer: boolean) {
   const box = shop.def.delivery;
   if (!box || !shop.delivery) return false;
-  const i = topMatching(a, isSellable);
+  const i = topMatching(a, (item) => deliverable(game, shop, item));
   if (i < 0) return false;
   const item = a.stack[i];
   const from = game.stackSlotWorld(a, i);

@@ -4,16 +4,20 @@
  */
 import type { ChallengeId } from "../data/challenges";
 import type { PerkId } from "../data/legacy";
-import type { SeasonId } from "./seasons";
+import type { Climate } from "./seasons";
 
 interface WithChallenges {
   challenges: readonly ChallengeId[];
+  world?: string;
 }
 
 export const hasChallenge = (st: WithChallenges, id: ChallengeId) => st.challenges.includes(id);
 
-/** "Вечная зима" stops the calendar in winter (undefined: the calendar runs). */
-export const frozenSeason = (st: WithChallenges): SeasonId | undefined => (hasChallenge(st, "winter") ? "winter" : undefined);
+/**
+ * The world's climate: "Вечная зима" stops the calendar in winter; the island
+ * lives in eternal summer with tropical seasons; undefined — the calendar runs.
+ */
+export const frozenSeason = (st: WithChallenges): Climate | undefined => (st.world === "island" ? "tropical" : hasChallenge(st, "winter") ? "winter" : undefined);
 
 /** Level of a legacy upgrade that actually works now ("С чистого листа" switches them all off). */
 export const effectivePerk = (st: WithChallenges & { legacy: Partial<Record<PerkId, number>> }, id: PerkId) =>

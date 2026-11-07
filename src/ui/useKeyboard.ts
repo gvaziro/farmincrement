@@ -15,7 +15,7 @@ function closeWindows() {
   const ui = useUI.getState();
   if (ui.tabBlocked) return;
   if (ui.news) updateSettings({ seenNews: NEWS_VERSION });
-  useUI.setState({ panel: null, settingsOpen: false, offline: null, news: false, chapter: false, chapterDone: null });
+  useUI.setState({ panel: null, settingsOpen: false, offline: null, news: false, chapter: null, chapterDone: null });
 }
 
 export function useKeyboard(game: Game) {

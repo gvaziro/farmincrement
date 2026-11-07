@@ -9,8 +9,10 @@ import { isHatId } from "../data/hats";
 import { PERKS, VOICE_TIME_PER_LEVEL, isPerkId } from "../data/legacy";
 import { ITEM_IDS, isSellable, type ItemId } from "../data/items";
 import { ACHIEVEMENTS, unlockedHats } from "./achievements";
-import { FIELDS, MACHINES, MERCHANT_SPOTS, ZONES, type ZoneId } from "../data/layout";
-import { GOLDEN_LIFE, MERCHANT_EVERY, MERCHANT_WAIT, RUNAWAY_HOMES, RUNAWAY_LIFE, RUSH_TIME, WHISTLE_COOLDOWN, WHISTLE_TIME } from "../data/surprises";
+import { ZONES, type ZoneId } from "../data/layout";
+import { CITY_MERCHANT_SPOTS } from "../data/city";
+import { layoutFor, layoutOf, type FarmWorldId, type RunawayKind, type WorldId } from "../data/worlds";
+import { GOLDEN_LIFE, MERCHANT_EVERY, MERCHANT_WAIT, RUNAWAY_LIFE, RUSH_TIME, WHISTLE_COOLDOWN, WHISTLE_TIME } from "../data/surprises";
 import { createRunaway, isRunawayKind } from "./systems/surprises";
 import { frozenSeason } from "./challenges";
 import { deserializeCity, serializeCity, type CitySave } from "./citySave";
@@ -26,8 +28,9 @@ export const SAVE_KEY = "tiny-farm-empire/save";
 /**
  * v2: prestige "seasons" became "generations" (seasons are the calendar now).
  * v3: chapter II — a save can hold the city next to the farm.
+ * v4: chapter III — and the island; each world remembers when it was left.
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 export { OFFLINE_MIN_SECONDS, offlineEarnings };
 
 export interface SaveData {
@@ -65,14 +68,18 @@ export interface SaveData {
   /** The family has built the statue: the bus to the city runs. */
   bus?: boolean;
   /** Which world the player is in (the farm when absent). */
-  world?: "farm" | "city";
+  world?: WorldId;
   city?: CitySave;
-  /** When the player left the world they are not in (ms). */
+  /** The island: a farm of its own, saved in the same shape as the farm. */
+  island?: SaveData;
+  /** v3: when the player left the world they are not in (ms). */
   sleepingSince?: number;
+  /** When the player left each world they are not in (ms). */
+  left?: Partial<Record<WorldId, number>>;
 }
 
 /** Event timers and whatever event is going on (a leaving cart counts as gone). */
-interface SavedSurprises {
+export interface SavedSurprises {
   seed: number;
   goldenIn: number;
   golden: { field: string; plant: number; t: number } | null;
@@ -139,35 +146,55 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
 export function serializeGame(game: Game, now = Date.now()): SaveData {
   const data = serialize(game.farm, now);
   const city = game.city;
-  if (!city) return data;
-  data.city = serializeCity(city);
+  const island = game.island;
+  if (!city && !island) return data;
+  if (city) data.city = serializeCity(city);
+  if (island) {
+    const isl = serialize(island, now);
+    // The family's things are saved once, with the farm.
+    delete isl.achievements;
+    delete isl.album;
+    delete isl.chronicle;
+    delete isl.records;
+    delete isl.legacy;
+    data.island = isl;
+  }
   data.world = game.state.world;
-  data.sleepingSince = game.sleepingSince;
+  data.left = { ...game.left };
   // Trophies, the hat and the family's stars live in the active state.
   data.achievements = [...game.state.achievements];
   data.hat = game.state.hat;
   return data;
 }
 
-/** Load a save into a Game, with both worlds in their places. */
+/** Load a save into a Game, with every world in its place. */
 export function loadGame(raw: unknown): Game {
   const farm = deserialize(raw);
   const d = (raw && typeof raw === "object" ? raw : {}) as Partial<SaveData>;
-  if (!d.city) return new Game(farm);
-  const city = deserializeCity(d.city);
-  city.achievements = farm.achievements;
-  city.album = farm.album;
-  city.hat = farm.hat;
-  city.prestige = farm.prestige;
-  city.legacy = farm.legacy;
-  farm.bus = true;
-  city.bus = true;
-  // The city's hats are already known: only now can an earned city hat be checked.
-  const since = num(d.sleepingSince, 0, 0);
-  return d.world === "city" ? new Game(city, farm, since) : new Game(farm, city, since);
+  if (!d.city && !d.island) return new Game(farm);
+  const worlds: GameState[] = [farm];
+  if (d.city) worlds.push(deserializeCity(d.city));
+  if (d.island && typeof d.island === "object") worlds.push(deserialize({ ...d.island, v: d.v }, "island"));
+  for (const w of worlds) {
+    w.achievements = farm.achievements;
+    w.album = farm.album;
+    w.hat = farm.hat;
+    w.prestige = farm.prestige;
+    w.legacy = farm.legacy;
+    w.bus = true;
+  }
+  const left: Partial<Record<WorldId, number>> = {};
+  if (d.left && typeof d.left === "object") {
+    for (const [k, v] of Object.entries(d.left)) if ((k === "farm" || k === "city" || k === "island") && typeof v === "number" && Number.isFinite(v)) left[k] = Math.max(0, v);
+  } else if (typeof d.sleepingSince === "number") {
+    // v3: the one sleeping world was the other of the two.
+    left[d.world === "city" ? "farm" : "city"] = num(d.sleepingSince, 0, 0);
+  }
+  const active = worlds.find((w) => w.world === d.world) ?? farm;
+  return new Game(active, worlds.filter((w) => w !== active), left);
 }
 
-function saveSurprises(st: GameState): SavedSurprises {
+export function saveSurprises(st: GameState): SavedSurprises {
   const s = st.surprises;
   const m = s.merchant && s.merchant.phase !== "leave" ? s.merchant : null;
   const r = s.runaway;
@@ -202,9 +229,10 @@ const ITEM_SET = new Set<string>(ITEM_IDS);
 const items = (v: unknown): ItemId[] => (Array.isArray(v) ? (v.filter((x) => ITEM_SET.has(x)) as ItemId[]) : []);
 
 /** Rebuild a full GameState from save data. Unknown/corrupt values fall back to defaults. */
-export function deserialize(raw: unknown): GameState {
+export function deserialize(raw: unknown, world: FarmWorldId = "farm"): GameState {
   const d = migrate(raw);
-  const st = createInitialState();
+  const L = layoutFor(world);
+  const st = createInitialState(world);
   if (!d) return st;
 
   st.money = num(d.money, 0, 0);
@@ -249,8 +277,8 @@ export function deserialize(raw: unknown): GameState {
   }
   st.marketLevel = Math.floor(num(d.marketLevel, 1, 1, MARKET_MAX_LEVEL));
 
-  const knownZones = new Set(ZONES.map((z) => z.id));
-  st.zones = new Set<ZoneId>(["farm", ...(Array.isArray(d.zones) ? d.zones.filter((z) => knownZones.has(z)) : [])]);
+  const knownZones = new Set(L.zones.map((z) => z.id));
+  st.zones = new Set<ZoneId>([L.startZone, ...(Array.isArray(d.zones) ? d.zones.filter((z) => knownZones.has(z)) : [])]);
 
   for (const p of st.pads) {
     const s = d.pads?.[p.id];
@@ -262,15 +290,15 @@ export function deserialize(raw: unknown): GameState {
 
   // Fields: starting field, zone freebies, bought plots.
   st.fields = [];
-  for (const f of FIELDS) {
-    const zone = ZONES.find((z) => z.id === f.zone)!;
-    const owned = f.id === "wheat_1" || (st.zones.has(f.zone) && zone.includes.includes(f.id)) || done(`field_${f.id}`);
+  for (const f of L.fields) {
+    const zone = L.zones.find((z) => z.id === f.zone)!;
+    const owned = L.startFields.includes(f.id) || (st.zones.has(f.zone) && zone.includes.includes(f.id)) || done(`field_${f.id}`);
     if (owned) st.fields.push(createField(f, false));
   }
 
   st.machines = [];
-  for (const m of MACHINES) {
-    const owned = (m.cost === 0 && m.zone === "farm") || done(`build_${m.id}`);
+  for (const m of L.machines) {
+    const owned = L.startMachines.includes(m.id) || done(`build_${m.id}`);
     if (!owned) continue;
     const s = d.machines?.[m.id];
     const machine = createMachine(m, false, Math.floor(num(s?.level, 1, 1, MACHINE_MAX_LEVEL)));
@@ -296,11 +324,12 @@ export function deserialize(raw: unknown): GameState {
     st.workers.push(w);
   }
 
-  if (st.zones.has("depot")) {
-    st.depot = createDepot();
+  if (st.zones.has(L.depotZone)) {
+    st.depot = createDepot(L.depot);
     st.depot.storage = items(d.depot?.storage).slice(0, 400);
     st.depot.truckLevel = Math.floor(num(d.depot?.truckLevel, 1, 1, TRUCK_MAX_LEVEL));
-    if (done("truck_2")) st.depot.trucks.push(createTruck(1));
+    // Every extra truck (or boat) pad that was bought.
+    for (const p of st.pads) if (p.done && p.def.effect.type === "truck") st.depot.trucks.push(createTruck(L.depot, st.depot.trucks.length));
   }
 
   st.player.x = num(d.player?.x, st.player.x);
@@ -341,7 +370,7 @@ function readChronicleEntry(v: unknown): ChronicleEntry[] {
 }
 
 /** Events come back only where they still make sense (the field, plot or pen is there). */
-function readSurprises(st: GameState, v: unknown) {
+export function readSurprises(st: GameState, v: unknown) {
   const s = createSurprises();
   st.surprises = s;
   if (!v || typeof v !== "object") return;
@@ -362,7 +391,8 @@ function readSurprises(st: GameState, v: unknown) {
 
   const m = d.merchant as Partial<SavedSurprises["merchant"] & object> | null | undefined;
   const zone = m && typeof m === "object" ? (m.zone as ZoneId) : undefined;
-  const spot = zone ? MERCHANT_SPOTS[zone] : undefined;
+  const spots: Partial<Record<ZoneId, { x: number; z: number }>> = st.world === "city" ? CITY_MERCHANT_SPOTS : layoutOf(st).merchantSpots;
+  const spot = zone ? spots[zone] : undefined;
   if (m && zone && spot && st.zones.has(zone) && ITEM_SET.has(m.item as string) && isSellable(m.item as ItemId)) {
     const need = Math.floor(num(m.need, 1, 1, 999));
     const have = Math.floor(num(m.have, 0, 0, need - 1));
@@ -370,7 +400,7 @@ function readSurprises(st: GameState, v: unknown) {
   }
 
   const r = d.runaway as Partial<SavedSurprises["runaway"] & object> | null | undefined;
-  const pen = r && typeof r === "object" && isRunawayKind(r.kind) ? st.machines.find((x) => x.id === RUNAWAY_HOMES[r.kind as keyof typeof RUNAWAY_HOMES]) : undefined;
+  const pen = st.world !== "city" && r && typeof r === "object" && isRunawayKind(r.kind) ? st.machines.find((x) => x.id === layoutOf(st).runawayHomes[r.kind as RunawayKind]) : undefined;
   if (r && pen && isRunawayKind(r.kind)) {
     const x = num(r.x, NaN);
     const z = num(r.z, NaN);
@@ -385,7 +415,7 @@ function migrate(raw: unknown): SaveData | null {
   if (!raw || typeof raw !== "object") return null;
   const d = { ...(raw as Record<string, unknown>) };
   if (typeof d.v !== "number" || d.v > SAVE_VERSION) return null;
-  if (d.v < 2) {
+  if ((d.v as number) < 2) {
     // v1 called a prestige run a "season".
     const old = d as { seasonEarned?: unknown; prestige?: { stars?: unknown; seasons?: unknown } };
     d.runEarned = old.seasonEarned;
@@ -393,8 +423,8 @@ function migrate(raw: unknown): SaveData | null {
     delete d.seasonEarned;
     d.v = 2;
   }
-  // v3 only adds optional fields.
-  if ((d.v as number) < 3) d.v = 3;
+  // v3 and v4 only add optional fields.
+  if ((d.v as number) < 4) d.v = 4;
   return d as unknown as SaveData;
 }
 

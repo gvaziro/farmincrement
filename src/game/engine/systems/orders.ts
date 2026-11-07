@@ -11,7 +11,8 @@ import { FAIR_BONUS, ORDER_BONUS, ORDER_COOLDOWN } from "../../data/balance";
 import { FAIR_PER_LEVEL } from "../../data/legacy";
 import { ITEMS, isSellable, type ItemId } from "../../data/items";
 import type { Game } from "../Game";
-import { DAYS_PER_SEASON, SEASONS, seasonDay, seasonSerial } from "../seasons";
+import { demandOf } from "../demand";
+import { DAYS_PER_SEASON, seasonDay, seasonSerial } from "../seasons";
 import { TUTORIAL_DONE } from "../tutorial";
 import type { Order } from "../types";
 
@@ -68,7 +69,7 @@ function startFair(game: Game) {
 /** The fair: seasonal goods the farm can make, bigger amounts, double bonus. */
 export function makeFairOrder(game: Game): Order | null {
   const st = game.state;
-  const demand = SEASONS[st.season].demand;
+  const demand = demandOf(st);
   const products = availableProducts(game).filter((i) => demand.includes(i));
   if (products.length === 0) return null;
   const lines = Math.min(2, products.length);

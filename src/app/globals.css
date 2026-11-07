@@ -2146,3 +2146,37 @@ button {
   color: #2f8a24;
   white-space: nowrap;
 }
+
+/* ── chapter III: destinations, the island's ride ──────────────────────── */
+.trip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.035);
+}
+
+.trip + .trip {
+  margin-top: 6px;
+}
+
+.trip__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+}
+
+.trip__icon {
+  font-size: 22px;
+}
+
+.travel--island {
+  background: linear-gradient(180deg, #7ed6f0 0%, #c8f0ff 55%, #2fb4c8 55%, #1f9ab0 100%);
+}
+
+.bus__body {
+  max-height: min(62vh, 520px);
+  overflow-y: auto;
+}

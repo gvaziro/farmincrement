@@ -11,6 +11,7 @@ import { Buildings } from "./buildings/Buildings";
 import { CityBuildings, FarmBusStop } from "./city/CityBuildings";
 import { CityCustomers } from "./city/CityCustomers";
 import { CityGround } from "./city/CityGround";
+import { IslandWorld } from "./island/IslandWorld";
 import { Characters } from "./Characters";
 import { Crops } from "./Crops";
 import { Customers } from "./Customers";
@@ -42,6 +43,13 @@ export function Scene({ runtime, quality }: { runtime: Runtime; quality: Quality
           <CityGround runtime={runtime} />
           <CityBuildings runtime={runtime} />
           <CityCustomers runtime={runtime} />
+        </>
+      ) : world === "island" ? (
+        <>
+          <IslandWorld runtime={runtime} />
+          <Fireflies runtime={runtime} />
+          <Crops runtime={runtime} />
+          <Customers runtime={runtime} />
         </>
       ) : (
         <>

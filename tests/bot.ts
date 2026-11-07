@@ -7,7 +7,7 @@
 import { ITEMS, isSellable, type ItemId } from "@/game/data/items";
 import { CROPS } from "@/game/data/crops";
 import { MACHINE_TYPES } from "@/game/data/machines";
-import { FARMHOUSE, MARKET } from "@/game/data/layout";
+import { layoutOf } from "@/game/data/worlds";
 import { PLAYER_STATS, WORKER_STATS, machineCapacity, type PlayerStatId, type WorkerStatId } from "@/game/data/balance";
 import type { ChallengeId } from "@/game/data/challenges";
 import { PERK_IDS, type PerkId } from "@/game/data/legacy";
@@ -210,8 +210,8 @@ export class Bot {
         z = t.pad.def.z;
         break;
       case "stat":
-        x = FARMHOUSE.door.x;
-        z = FARMHOUSE.door.z;
+        x = layoutOf(this.st).farmhouse.door.x;
+        z = layoutOf(this.st).farmhouse.door.z;
         break;
       case "deliver":
         x = t.x;
@@ -262,7 +262,8 @@ export class Bot {
     if (best && (!isSellable(item) || ITEMS[best.type.output.item].price > ITEMS[item].price)) {
       return { kind: "deliver", zoneId: `in:${best.id}`, x: best.inRect.x, z: best.inRect.z };
     }
-    if (isSellable(item)) return { kind: "deliver", zoneId: "market", x: MARKET.sell.x, z: MARKET.sell.z };
+    const sell = layoutOf(this.st).market.sell;
+    if (isSellable(item)) return { kind: "deliver", zoneId: "market", x: sell.x, z: sell.z };
     return null;
   }
 

@@ -11,6 +11,10 @@ import { INITIAL_MACHINES, fieldById, machineById, machineUpgradeBase, zoneById,
 import { isHatId, type HatId } from "../data/hats";
 import { FAME_PER_LEVEL, LANDS_ORDER, PERKS, TREASURY_MONEY, WORKSHOP_PER_LEVEL, type PerkId } from "../data/legacy";
 import { OFFLINE_MIN_SECONDS, offlineFor } from "./offline";
+import { CITY_PENNY_PER_SHOP, FAME_LIGHTHOUSE, FAME_PER_ISLE, ISLE_STARS, LIGHTHOUSE_STARS } from "../data/island";
+import { layoutFor, layoutOf, type WorldId } from "../data/worlds";
+import { demandMult } from "./demand";
+import { updatePenny } from "./systems/penny";
 import { createCityState, createShelf, createShop, createTable, shopForZone } from "./city";
 import { farmPenny, updateCity } from "./systems/city";
 import { RUSH_MULT } from "../data/surprises";
@@ -19,7 +23,7 @@ import { effectivePerk, frozenSeason, hasChallenge } from "./challenges";
 import { inputSlot, localToWorld, outputSlot, stackSlotLocal } from "./anchors";
 import { isNight } from "./daycycle";
 import { NavGrid } from "./nav";
-import { calendarSeason, seasonDemand } from "./seasons";
+import { calendarSeason } from "./seasons";
 import { currentWeather } from "./weather";
 import { truckDockX, truckSlot, updateDepot } from "./systems/depot";
 import { harvestAround, updateFields } from "./systems/harvest";
@@ -47,18 +51,20 @@ import {
 } from "./world";
 
 const MAX_FLIGHTS = 900;
+
+/** Where you step off: just north of a stop, so you do not stand on it. */
+const arrivalBeside = (stop: { x: number; z: number; d: number }) => ({ x: stop.x, z: stop.z - stop.d / 2 - 0.8 });
 /** The chronicle keeps this many generations. */
 const CHRONICLE_MAX = 60;
 
 export class Game {
   /** The world being played right now. */
   state: GameState;
-  /** The other world, asleep until the bus goes back. */
-  sleeping: GameState | null;
-  /** When the sleeping world was left (ms), for its offline income. */
-  sleepingSince = 0;
-  private readonly farmNav = new NavGrid();
-  private cityNav: NavGrid | null = null;
+  /** Every world the family has, the one being played included. */
+  private readonly worlds = new Map<WorldId, GameState>();
+  /** When each world was left (ms), for its offline income. */
+  left: Partial<Record<WorldId, number>> = {};
+  private readonly navs = new Map<WorldId, NavGrid>();
   /** Movement intent from keyboard / joystick, magnitude ≤ 1. */
   readonly input = { x: 0, z: 0 };
 
@@ -68,25 +74,43 @@ export class Game {
   private interactMap = new Map<string, InteractZone>();
   private actorMap = new Map<string, Actor>();
 
-  constructor(state: GameState = createInitialState(), sleeping: GameState | null = null, sleepingSince = 0) {
+  constructor(state: GameState = createInitialState(), others: readonly GameState[] = [], left: Partial<Record<WorldId, number>> = {}) {
     this.state = state;
-    this.sleeping = sleeping;
-    this.sleepingSince = sleepingSince;
+    for (const o of others) this.worlds.set(o.world, o);
+    this.worlds.set(state.world, state);
+    this.left = { ...left };
     this.rebuild();
   }
 
   /** Navigation of the world being played. */
   get nav() {
-    if (this.state.world === "farm") return this.farmNav;
-    return (this.cityNav ??= new NavGrid(CITY_BOUNDS));
+    const w = this.state.world;
+    let n = this.navs.get(w);
+    if (!n) {
+      n = new NavGrid(w === "city" ? CITY_BOUNDS : layoutFor(w).bounds);
+      this.navs.set(w, n);
+    }
+    return n;
   }
   /** The farm, wherever the player is. */
   get farm() {
-    return this.state.world === "farm" ? this.state : this.sleeping!;
+    return this.worlds.get("farm")!;
   }
   /** The city, once the family has moved there. */
   get city() {
-    return this.state.world === "city" ? this.state : this.sleeping;
+    return this.worlds.get("city") ?? null;
+  }
+  /** The island, once the seaplane has taken the family there. */
+  get island() {
+    return this.worlds.get("island") ?? null;
+  }
+  /** The world the bus goes to by default: back to the farm, or on to the city. */
+  get sleeping() {
+    return this.worlds.get(this.defaultDestination()) ?? null;
+  }
+  /** A world by its id, if the family has it. */
+  worldState(id: WorldId) {
+    return this.worlds.get(id) ?? null;
   }
 
   // ── lookups ───────────────────────────────────────────────────────────
@@ -190,6 +214,7 @@ export class Game {
       updateDepot(this, dt);
       updateOrders(this, dt);
     }
+    updatePenny(this, dt);
     updateSurprises(this, dt);
     this.updateFlights(dt);
     for (const pad of st.pads) if (pad.visible) pad.appearT += dt;
@@ -308,7 +333,7 @@ export class Game {
         return outputSlot(m, a.slot);
       }
       case "depot":
-        return depotSlot(a.slot);
+        return depotSlot(layoutOf(this.state).depot, a.slot);
       case "truck": {
         const t = this.state.depot?.trucks.find((x) => x.id === a.truck);
         if (!t) return { x: 0, y: 0, z: 0 };
@@ -349,7 +374,21 @@ export class Game {
 
   // ── economy ───────────────────────────────────────────────────────────
   priceMult() {
-    return marketPriceMult(this.state.marketLevel) * (1 + this.perk("fame") * FAME_PER_LEVEL) * (1 + (this.state.world === "farm" ? this.cityFame() : 0));
+    return marketPriceMult(this.state.marketLevel) * (1 + this.perk("fame") * FAME_PER_LEVEL) * this.worldFame();
+  }
+  /** What the family's other worlds add to this world's prices. */
+  worldFame() {
+    const w = this.state.world;
+    if (w === "farm") return 1 + this.cityFame() + this.islandFame();
+    if (w === "city") return 1 + this.islandFame();
+    return 1;
+  }
+  /** Exotic fame: what the island adds to the prices of the farm and the city. */
+  islandFame() {
+    const i = this.island;
+    if (!i) return 0;
+    // The first beach comes for free; every island bought after it counts.
+    return (i.zones.size - 1) * FAME_PER_ISLE + (i.statue ? FAME_LIGHTHOUSE : 0);
   }
   /** How much the family's business in town adds to the farm's prices. */
   cityFame() {
@@ -358,7 +397,7 @@ export class Game {
   }
   /** What an item is worth: market level, fame, the season's demand and the album's sets. */
   sellValue(item: ItemId) {
-    return ITEMS[item].price * this.priceMult() * seasonDemand(this.state.season, item) * albumMult(this.state.album, item);
+    return ITEMS[item].price * this.priceMult() * demandMult(this.state, item) * albumMult(this.state.album, item);
   }
   /** A gold rush doubles every sale while it lasts. */
   rushMult() {
@@ -452,10 +491,16 @@ export class Game {
         for (const fid of z.includes) {
           if (!st.fields.some((f) => f.id === fid)) st.fields.push(createField(fieldById(fid), true));
         }
-        if (e.id === "depot" && !st.depot) st.depot = createDepot();
+        if (st.world !== "city" && e.id === layoutOf(st).depotZone && !st.depot) st.depot = createDepot(layoutOf(st).depot);
         pad.done = true;
         if (st.city) {
           this.openPlot(e.id);
+          break;
+        }
+        if (st.world === "island") {
+          st.prestige.stars += ISLE_STARS;
+          st.prestige.totalStars += ISLE_STARS;
+          this.emit({ type: "isleOpen", zone: e.id, stars: ISLE_STARS });
           break;
         }
         this.emit({ type: "toast", text: `Новая земля: ${z.name}!`, icon: z.icon });
@@ -492,13 +537,20 @@ export class Game {
         pad.paid = 0;
         break;
       case "truck":
-        if (st.depot) st.depot.trucks.push(createTruck(st.depot.trucks.length));
+        if (st.depot && st.world !== "city") st.depot.trucks.push(createTruck(layoutOf(st).depot, st.depot.trucks.length));
         pad.done = true;
         break;
       case "statue":
         st.statue = true;
         st.bus = true;
         pad.done = true;
+        if (st.world === "island") {
+          // The lighthouse: the island's chapter is over.
+          st.prestige.stars += LIGHTHOUSE_STARS;
+          st.prestige.totalStars += LIGHTHOUSE_STARS;
+          this.emit({ type: "chapterDone", stars: LIGHTHOUSE_STARS, world: "island" });
+          break;
+        }
         this.emit({ type: "statue" });
         this.recordTime("statue");
         break;
@@ -576,35 +628,69 @@ export class Game {
       city.finished = true;
       st.prestige.stars += TOWER_STARS;
       st.prestige.totalStars += TOWER_STARS;
-      this.emit({ type: "chapterDone", stars: TOWER_STARS });
+      this.emit({ type: "chapterDone", stars: TOWER_STARS, world: "city" });
     }
   }
 
-  // ── the bus ───────────────────────────────────────────────────────────
-  /** The family built the statue once: the bus runs both ways from then on. */
-  canTravel() {
-    return this.state.bus;
+  // ── the bus and the seaplane ──────────────────────────────────────────
+  /** The island opens once the city's tower stands (or the family is already there). */
+  islandOpen() {
+    return !!this.island || !!this.city?.city?.finished;
+  }
+
+  /** Where you can go from here: the bus runs once the statue stands, the seaplane after the tower. */
+  destinations(): WorldId[] {
+    if (!this.state.bus) return [];
+    const out: WorldId[] = [];
+    for (const w of ["farm", "city", "island"] as const) {
+      if (w === this.state.world) continue;
+      if (w === "island" && !this.islandOpen()) continue;
+      out.push(w);
+    }
+    return out;
+  }
+
+  /** The bus goes from the farm to town and from anywhere else back home. */
+  private defaultDestination(): WorldId {
+    return this.state.world === "farm" ? "city" : "farm";
+  }
+
+  canTravel(to?: WorldId) {
+    const d = this.destinations();
+    return to ? d.includes(to) : d.length > 0;
+  }
+
+  /** What the other worlds send to `world` while it is played. */
+  pennyFor(world: WorldId) {
+    const farm = farmPenny(this.farm);
+    if (world === "city") return farm;
+    if (world === "island") return Math.round((farm + (this.city?.city?.shops.length ?? 0) * CITY_PENNY_PER_SHOP) * 100) / 100;
+    return 0;
   }
 
   /**
-   * Swap worlds. The world left behind falls asleep; the one you return to gets
-   * offline income for the time apart. The very first trip founds the city.
+   * Swap worlds. The world left behind falls asleep; the one you go to gets
+   * offline income for the time apart. The first trip to a world founds it.
    * Returns what the managers earned meanwhile, for the "while you were away" window.
    */
-  travel(now = Date.now()) {
-    if (!this.canTravel()) return null;
+  travel(dest?: WorldId, now = Date.now()) {
+    const target = dest ?? this.defaultDestination();
+    if (!this.canTravel(target)) return null;
     // Everything in the air lands first: counters must not wait for it for ever.
     for (const f of this.state.flights) this.landFlight(f);
     this.state.flights.length = 0;
     const from = this.state;
-    const to = this.sleeping ?? createCityState();
-    const first = !this.sleeping;
-    const away = first ? 0 : Math.max(0, (now - this.sleepingSince) / 1000);
-    this.sleeping = from;
-    this.sleepingSince = now;
+    const existing = this.worlds.get(target);
+    const to = existing ?? (target === "city" ? createCityState() : createInitialState("island"));
+    const first = !existing;
+    const since = this.left[target];
+    const away = first || since === undefined ? 0 : Math.max(0, (now - since) / 1000);
+    this.worlds.set(target, to);
+    this.left[from.world] = now;
+    delete this.left[target];
     this.state = to;
     this.shareFamily(from, to);
-    if (to.city) to.city.penny = farmPenny(from);
+    to.penny.rate = this.pennyFor(target);
     // Views notice the swap by this counter: it must keep growing.
     to.structure = Math.max(from.structure, to.structure) + 1;
     this.input.x = 0;
@@ -615,7 +701,7 @@ export class Game {
     from.player.zoneId = null;
     to.player.zoneId = null;
     // You arrive beside the stop: standing on it would open its window again.
-    const spawn = to.world === "city" ? CITY_SPAWN : FARM_SPAWN;
+    const spawn = to.world === "city" ? CITY_SPAWN : to.world === "farm" ? FARM_SPAWN : arrivalBeside(layoutFor(to.world).busStop);
     to.player.x = spawn.x;
     to.player.z = spawn.z;
     this.events = [];
@@ -766,13 +852,15 @@ export class Game {
     next.tutorial = TUTORIAL_DONE;
     // Keep the counter monotonic so views always notice the swap.
     next.structure = old.structure + 1;
-    // The manager's "копеечка" now comes from the new, smaller farm.
-    if (this.sleeping?.city) this.sleeping.city.penny = farmPenny(next);
+
     // The new generation starts on a fresh spring morning (or a winter one).
     next.dayClock = 0;
     next.season = calendarSeason(0, frozenSeason(next));
     next.weather = currentWeather(0, frozenSeason(next));
     this.state = next;
+    this.worlds.set("farm", next);
+    // The managers' "копеечка" now comes from the new, smaller farm.
+    for (const w of this.worlds.values()) if (w !== next) w.penny.rate = this.pennyFor(w.world);
     this.inherit(next);
     this.events = [];
     this.rebuild();
@@ -792,7 +880,7 @@ export class Game {
     for (const id of LANDS_ORDER.slice(0, lv("lands"))) {
       st.zones.add(id);
       for (const fid of zoneById(id).includes) if (!st.fields.some((f) => f.id === fid)) st.fields.push(createField(fieldById(fid), false));
-      if (id === "depot" && !st.depot) st.depot = createDepot();
+      if (id === "depot" && !st.depot) st.depot = createDepot(layoutFor("farm").depot);
       const pad = st.pads.find((p) => p.id === `zone_${id}`);
       if (pad) pad.done = true;
     }
@@ -826,6 +914,6 @@ export class Game {
 
   /** Where trucks stop (for renderers). */
   truckDock(index: number) {
-    return truckDockX(index);
+    return truckDockX(layoutOf(this.state).depot, index);
   }
 }

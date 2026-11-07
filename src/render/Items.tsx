@@ -7,6 +7,7 @@ import { easeOutBack } from "@/game/core/math";
 import { ITEM_IDS, ITEMS, type ItemId } from "@/game/data/items";
 import { STACK_BASE_Y, inputSlot, layoutStack, outputSlot } from "@/game/engine/anchors";
 import { cashSlot, shelfSlot } from "@/game/engine/systems/city";
+import { layoutOf } from "@/game/data/worlds";
 import { truckSlot } from "@/game/engine/systems/depot";
 import { DEPOT_VISIBLE, depotSlot } from "@/game/engine/systems/interact";
 import type { Actor, FlightItem, Worker } from "@/game/engine/types";
@@ -101,7 +102,7 @@ export function Items({ runtime }: { runtime: Runtime }) {
     if (d) {
       const n = Math.min(d.storage.length - d.incoming, DEPOT_VISIBLE);
       for (let i = 0; i < n; i++) {
-        const p = depotSlot(i);
+        const p = depotSlot(layoutOf(st).depot, i);
         put(d.storage[i], p.x, p.y, p.z, jitter(i) * 0.5);
       }
       for (const tr of d.trucks) {

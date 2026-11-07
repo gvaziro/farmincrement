@@ -5,7 +5,7 @@
 import { easeInOutSine } from "../../core/math";
 import { DEPOT_BONUS, TRUCK_TRIP_TIME, truckCapacity } from "../../data/balance";
 import { ITEMS } from "../../data/items";
-import { DEPOT } from "../../data/layout";
+import { layoutOf, type DepotDef } from "../../data/worlds";
 import type { Game } from "../Game";
 import type { Truck } from "../types";
 import { DEPOT_VISIBLE, depotSlot } from "./interact";
@@ -14,8 +14,8 @@ export const TRUCK_FAR_X = 60;
 const DRIVE_TIME = 3.2;
 const LOAD_INTERVAL = 0.09;
 
-export function truckDockX(index: number) {
-  return DEPOT.dock.x + index * 5.4;
+export function truckDockX(depot: DepotDef, index: number) {
+  return depot.dock.x + index * 5.4;
 }
 
 /** Truck bed slot (local, relative to truck origin; truck faces −x when arriving). */
@@ -35,9 +35,10 @@ export function truckSlot(t: Truck, slot: number) {
 export function updateDepot(game: Game, dt: number) {
   const d = game.state.depot;
   if (!d) return;
+  const def = layoutOf(game.state).depot;
   const cap = truckCapacity(d.truckLevel);
   d.trucks.forEach((t, index) => {
-    const dock = truckDockX(index);
+    const dock = truckDockX(def, index);
     switch (t.phase) {
       case "away":
         t.t -= dt;
@@ -69,7 +70,7 @@ export function updateDepot(game: Game, dt: number) {
             }
             const item = d.storage[best];
             const top = d.storage.length - 1;
-            const from = depotSlot(Math.min(top, DEPOT_VISIBLE - 1));
+            const from = depotSlot(def, Math.min(top, DEPOT_VISIBLE - 1));
             d.storage.splice(best, 1);
             const slot = t.cargo.length;
             t.cargo.push(item);

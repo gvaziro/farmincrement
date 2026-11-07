@@ -3,7 +3,8 @@
  * layout and the completed pads. Customers are not saved: new ones come along.
  */
 import { MACHINE_MAX_LEVEL, PLAYER_STATS, WORKER_STATS, statMaxLevel } from "../data/balance";
-import { SHOPS, SHOP_MAX_LEVEL, TOWER_FLOORS, VAN_MAX_LEVEL, shelfById, shelfCapacity, tableById } from "../data/city";
+import { SHOPS, SHOP_MAX_LEVEL, TABLE_TIP, TOWER_FLOORS, VAN_MAX_LEVEL, shelfById, shelfCapacity, tableById } from "../data/city";
+import { readSurprises, saveSurprises } from "./save";
 import { ITEM_IDS, type ItemId } from "../data/items";
 import { CITY_ZONES, machineById, type ZoneId } from "../data/layout";
 import { createCityState, createShelf, createShop, createTable } from "./city";
@@ -32,6 +33,7 @@ export interface CitySave {
   penny: number;
   bloggerIn: number;
   made: Partial<Record<string, number>>;
+  surprises?: unknown;
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -47,17 +49,25 @@ export function serializeCity(st: GameState): CitySave {
   for (const m of st.machines) machines[m.id] = { level: m.level, inputs: { ...m.inputs }, output: m.output, progress: m.working ? round2(m.progress) : undefined };
   const workers: CitySave["workers"] = {};
   for (const w of st.workers) workers[w.id] = { x: round2(w.x), z: round2(w.z), stack: [...w.stack] };
+  // Customers are not saved: what they hold goes back on the counter, and a
+  // guest at a table leaves the tip now.
+  const back = new Map<string, number>();
+  const tips = new Map<string, number>();
+  for (const c of city.customers) {
+    if (c.cphase === "none" || !c.shop) continue;
+    if (!c.bag) for (const item of c.stack) back.set(`${c.shop}|${item}`, (back.get(`${c.shop}|${item}`) ?? 0) + 1);
+    if (c.cphase === "eat" || c.cphase === "toTable") tips.set(c.shop, (tips.get(c.shop) ?? 0) + c.bill * TABLE_TIP);
+  }
   const shops: CitySave["shops"] = {};
   for (const s of city.shops) {
-    // Goods a customer already holds are on their way out, whatever happens.
     shops[s.id] = {
       level: s.level,
       ads: s.ads,
       van: s.van.level,
-      cash: round2(s.cash),
-      bundles: s.bundles,
+      cash: round2(s.cash + (tips.get(s.id) ?? 0)),
+      bundles: s.bundles + (tips.has(s.id) && s.bundles === 0 ? 1 : 0),
       delivery: s.delivery,
-      shelves: Object.fromEntries(s.shelves.map((x) => [x.id, x.count])),
+      shelves: Object.fromEntries(s.shelves.map((x) => [x.id, x.count + (back.get(`${s.id}|${x.def.item}`) ?? 0)])),
       tables: s.tables.map((t) => t.id),
     };
   }
@@ -77,9 +87,10 @@ export function serializeCity(st: GameState): CitySave {
     dayClock: Math.floor(st.dayClock * 100) / 100,
     floors: city.floors,
     finished: city.finished,
-    penny: city.penny,
+    penny: st.penny.rate,
     bloggerIn: round2(city.bloggerIn),
     made: { ...st.made },
+    surprises: saveSurprises(st),
   };
 }
 
@@ -189,7 +200,7 @@ export function deserializeCity(raw: unknown): GameState {
 
   city.floors = Math.floor(num(d.floors, 0, 0, TOWER_FLOORS));
   city.finished = !!d.finished && city.floors >= TOWER_FLOORS;
-  city.penny = num(d.penny, 0, 0);
+  st.penny.rate = num(d.penny, 0, 0);
   city.bloggerIn = num(d.bloggerIn, city.bloggerIn, 0, 3600);
 
   st.player.x = num(d.player?.x, st.player.x);
@@ -197,5 +208,6 @@ export function deserializeCity(raw: unknown): GameState {
   st.player.facing = num(d.player?.facing, st.player.facing);
   applyStats(st);
   st.player.stack = items(d.player?.stack).slice(0, st.player.capacity);
+  readSurprises(st, d.surprises);
   return st;
 }

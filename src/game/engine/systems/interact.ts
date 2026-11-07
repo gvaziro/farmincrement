@@ -11,7 +11,7 @@ import {
   transferInterval,
 } from "../../data/balance";
 import { ITEMS, isSellable, type ItemId } from "../../data/items";
-import { DEPOT, MARKET } from "../../data/layout";
+import { layoutOf, type DepotDef } from "../../data/worlds";
 import { MERCHANT_MULT } from "../../data/surprises";
 import { inputSlot, outputSlot, pileSlot } from "../anchors";
 import type { Game } from "../Game";
@@ -180,8 +180,9 @@ function sellAtMarket(game: Game, a: Actor, isPlayer: boolean) {
   const value = game.salePrice(item);
   game.earn(value, !isPlayer);
   game.state.stats.sold++;
-  const tx = MARKET.x + (Math.random() - 0.5) * 2.4;
-  const tz = MARKET.z + 0.6;
+  const market = layoutOf(game.state).market;
+  const tx = market.x + (Math.random() - 0.5) * 2.4;
+  const tz = market.z + 0.6;
   game.flight(item, from.x, from.y, from.z, { kind: "point", x: tx, y: 1.15, z: tz }, 0.34, 1.3, {
     type: "saleLand",
     value,
@@ -206,7 +207,8 @@ function dropIntoDepot(game: Game, a: Actor, isPlayer: boolean) {
   d.storage.push(item);
   d.incoming++;
   game.flight(item, from.x, from.y, from.z, { kind: "depot", slot }, 0.32, 1.1);
-  game.emit({ type: "drop", item, player: isPlayer, x: DEPOT.input.x, z: DEPOT.input.z });
+  const input = layoutOf(game.state).depot.input;
+  game.emit({ type: "drop", item, player: isPlayer, x: input.x, z: input.z });
   return true;
 }
 
@@ -253,9 +255,9 @@ function dropIntoTrash(game: Game, a: Actor, isPlayer: boolean, zone: InteractZo
 
 /** Depot piles show at most this many crates; the rest is "inside". */
 export const DEPOT_VISIBLE = 48;
-export const depotSlot = (slot: number) =>
+export const depotSlot = (depot: DepotDef, slot: number) =>
   pileSlot(
-    { x: DEPOT.input.x, z: DEPOT.input.z - 0.1, hw: DEPOT.input.w / 2, hd: DEPOT.input.d / 2 },
+    { x: depot.input.x, z: depot.input.z - 0.1, hw: depot.input.w / 2, hd: depot.input.d / 2 },
     Math.min(slot, DEPOT_VISIBLE - 1),
     0.3,
   );

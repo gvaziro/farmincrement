@@ -14,7 +14,8 @@ export const ZONE_D = 22;
 
 export type FarmZoneId = "farm" | "coop" | "pasture" | "depot" | "orchard" | "garden" | "sweets" | "pond" | "apiary" | "sheep" | "berries" | "pumpkins";
 export type CityZoneId = "c_lavka" | "c_cafe" | "c_pizza" | "c_fish" | "c_sweets" | "c_fashion" | "c_store" | "c_park" | "c_tower";
-export type ZoneId = FarmZoneId | CityZoneId;
+export type IslandZoneId = "i_beach" | "i_bananas" | "i_palms" | "i_harbor" | "i_lagoon" | "i_cane" | "i_cocoa" | "i_coffee" | "i_pearls";
+export type ZoneId = FarmZoneId | CityZoneId | IslandZoneId;
 
 export interface ZoneDef {
   id: ZoneId;
@@ -59,7 +60,11 @@ export const CITY_ZONES: ZoneDef[] = [
   { id: "c_tower", name: "Башня", icon: "🏙️", gx: 0, gz: -2, includes: [], tint: "#dad6c9" },
 ];
 
-export const zoneById = (id: ZoneId) => ZONES.find((z) => z.id === id) ?? CITY_ZONES.find((z) => z.id === id)!;
+/** Zones, fields and machines of other farm-like worlds (the island registers its own). */
+const EXTRA_ZONES: ZoneDef[] = [];
+const EXTRA_FIELDS: FieldDef[] = [];
+
+export const zoneById = (id: ZoneId) => ZONES.find((z) => z.id === id) ?? CITY_ZONES.find((z) => z.id === id) ?? EXTRA_ZONES.find((z) => z.id === id)!;
 export const zoneCenter = (z: { gx: number; gz: number }) => ({ x: z.gx * ZONE_W, z: z.gz * ZONE_D });
 export const zoneRect = (z: { gx: number; gz: number }) => ({
   x: z.gx * ZONE_W,
@@ -147,7 +152,7 @@ export const WATER_RECTS = [
   fromBounds(POND.water.x0, POND.pier.x0, POND.pier.z0, POND.pier.z1),
 ];
 
-export const fieldById = (id: string) => FIELDS.find((f) => f.id === id)!;
+export const fieldById = (id: string) => FIELDS.find((f) => f.id === id) ?? EXTRA_FIELDS.find((f) => f.id === id)!;
 
 // ── machines ────────────────────────────────────────────────────────────
 export interface MachineDef {
@@ -267,6 +272,14 @@ export const CITY_MACHINES: MachineDef[] = [
 
 const MACHINE_INDEX = new Map([...MACHINES, ...CITY_MACHINES].map((m) => [m.id, m]));
 export const machineById = (id: string) => MACHINE_INDEX.get(id)!;
+
+/** Another farm-like world brings its land, fields and machines (see data/island.ts). */
+export function registerWorldData(d: { zones: readonly ZoneDef[]; fields: readonly FieldDef[]; machines: readonly MachineDef[] }) {
+  for (const z of d.zones) if (!EXTRA_ZONES.includes(z)) EXTRA_ZONES.push(z);
+  for (const f of d.fields) if (!EXTRA_FIELDS.includes(f)) EXTRA_FIELDS.push(f);
+  for (const m of d.machines) MACHINE_INDEX.set(m.id, m);
+}
+
 /** Base for upgrade prices: initial machines get a fixed small base. */
 export const machineUpgradeBase = (m: MachineDef) => (m.cost > 0 ? m.cost * 0.6 : 30);
 
@@ -432,7 +445,7 @@ function fieldPad(id: string, cost: number, requires: string[]) {
     requires,
     effect: { type: "field", id },
     label: f.crop === "apple" ? "Сад" : f.crop === "fish" ? "Рыбное место" : f.crop === "flowers" ? "Цветник" : "Грядка",
-    icon: { wheat: "🌾", corn: "🌽", grass: "🌿", tomato: "🍅", apple: "🌳", flowers: "🌸", fish: "🎣", strawberry: "🍓", pumpkin: "🎃" }[f.crop],
+    icon: ({ wheat: "🌾", corn: "🌽", grass: "🌿", tomato: "🍅", apple: "🌳", flowers: "🌸", fish: "🎣", strawberry: "🍓", pumpkin: "🎃" } as Partial<Record<string, string>>)[f.crop] ?? "🌱",
   });
 }
 

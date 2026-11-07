@@ -14,6 +14,7 @@ import { Chickens, Cows, PenFence, Sheep, Sign } from "./parts";
 import { lanternMat, windowMat } from "../nightMaterials";
 import { DYNAMIC } from "../StaticBatch";
 import { CITY_KITCHEN_MODELS } from "../city/kitchens";
+import { ISLAND_HUT_MODELS } from "../island/huts";
 import { SUPPLY_ITEMS } from "@/game/data/machines";
 
 const itemMat = new MeshLambertMaterial({ vertexColors: true, flatShading: true });
@@ -674,6 +675,7 @@ const Nothing = () => <group />;
 
 export const MACHINE_MODELS: Record<MachineTypeId, (p: { m: Machine }) => React.JSX.Element> = {
   ...CITY_KITCHEN_MODELS,
+  ...ISLAND_HUT_MODELS,
   ...(Object.fromEntries(SUPPLY_ITEMS.map((i) => [`supply_${i}`, Nothing])) as Record<`supply_${(typeof SUPPLY_ITEMS)[number]}`, () => React.JSX.Element>),
   mill: Mill,
   bakery: Bakery,

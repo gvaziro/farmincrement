@@ -9,7 +9,7 @@ import { HATS, HAT_IDS } from "@/game/data/hats";
 import { ITEMS } from "@/game/data/items";
 import { ZONES, zoneById } from "@/game/data/layout";
 import { PERKS, PERK_IDS, type PerkId } from "@/game/data/legacy";
-import { ACHIEVEMENTS, type AchievementDef } from "@/game/engine/achievements";
+import { ACHIEVEMENTS, achievementWorld, type AchievementDef } from "@/game/engine/achievements";
 import type { Game } from "@/game/engine/Game";
 import type { GameState } from "@/game/engine/types";
 import { PLAYER_STATS, WORKER_STATS, statMaxLevel, statValue, type LevelledStat, type PlayerStatId, type WorkerStatId } from "@/game/data/balance";
@@ -30,8 +30,9 @@ export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
   const hasWorkers = st.workers.length > 0;
   // The shop opens with the first star; handing the farm over needs the statue.
   const inCity = st.world === "city";
-  const canLegacy = !inCity && (st.statue || st.prestige.generations > 0 || st.prestige.stars > 0);
-  const wrong = (tab === "workers" && !hasWorkers) || (tab === "legacy" && !canLegacy) || (tab === "album" && inCity) || (tab === "business" && !inCity);
+  const onFarm = st.world === "farm";
+  const canLegacy = onFarm && (st.statue || st.prestige.generations > 0 || st.prestige.stars > 0);
+  const wrong = (tab === "workers" && !hasWorkers) || (tab === "legacy" && !canLegacy) || (tab === "album" && !onFarm) || (tab === "business" && !inCity);
   const current: Tab = wrong ? "farmer" : tab;
   // Nothing to harvest in town: the reach of your arms does not matter.
   const stats = (Object.keys(PLAYER_STATS) as PlayerStatId[]).filter((id) => !inCity || id !== "reach");
@@ -39,7 +40,7 @@ export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
   return (
     <div className="panel" onPointerDown={(e) => e.stopPropagation()}>
       <div className="panel__head">
-        <span className="panel__title">{inCity ? "🏢 Контора" : "🏡 Дом фермера"}</span>
+        <span className="panel__title">{inCity ? "🏢 Контора" : onFarm ? "🏡 Дом фермера" : "🛖 Бунгало"}</span>
         <div className="tabs">
           <button className={`tab ${current === "farmer" ? "tab--on" : ""}`} onClick={() => setTab("farmer")}>
             {inCity ? "Хозяин" : "Фермер"}
@@ -57,7 +58,7 @@ export function FarmhousePanel({ runtime }: { runtime: Runtime }) {
           <button className={`tab ${current === "trophies" ? "tab--on" : ""}`} onClick={() => setTab("trophies")}>
             Трофеи 🏆
           </button>
-          {!inCity && (
+          {onFarm && (
             <button className={`tab ${current === "album" ? "tab--on" : ""}`} onClick={() => setTab("album")}>
               Альбом 📖
             </button>
@@ -147,8 +148,7 @@ function Trophies({ runtime }: { runtime: Runtime }) {
   const st = g.state;
   const hats = g.hats();
   // Each world shows its own: progress reads the numbers of the world you are in.
-  const inCity = st.world === "city";
-  const list = ACHIEVEMENTS.filter((a) => !!a.city === inCity);
+  const list = ACHIEVEMENTS.filter((a) => achievementWorld(a) === st.world);
   return (
     <div className="trophies">
       <div className="wardrobe">
@@ -175,7 +175,7 @@ function Trophies({ runtime }: { runtime: Runtime }) {
         })}
       </div>
       <div className="ach-head">
-        {inCity ? "Достижения города" : "Достижения"}: <b>{list.filter((a) => st.achievements.has(a.id)).length}</b> из {list.length}
+        {st.world === "city" ? "Достижения города" : st.world === "island" ? "Достижения острова" : "Достижения"}: <b>{list.filter((a) => st.achievements.has(a.id)).length}</b> из {list.length}
       </div>
       {list.map((a) => (
         <AchievementRow key={a.id} a={a} game={g} />

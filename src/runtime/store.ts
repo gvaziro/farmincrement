@@ -3,6 +3,7 @@ import type { HatId } from "@/game/data/hats";
 import type { ItemId } from "@/game/data/items";
 import type { SeasonId } from "@/game/engine/seasons";
 import type { WeatherKind } from "@/game/engine/weather";
+import type { WorldId } from "@/game/data/worlds";
 
 export type Quality = "high" | "medium" | "low";
 
@@ -58,18 +59,18 @@ export interface UIState {
   goal: GoalInfo | null;
   panel: "farmhouse" | "bus" | null;
   /** Which world is on screen. */
-  world: "farm" | "city";
+  world: WorldId;
   /** The bus runs: the family has built the statue. */
   bus: boolean;
   /** The ride to the other world is under way (the overlay covers the swap). */
-  travel: "farm" | "city" | null;
-  /** Show the chapter's title card. */
-  chapter: boolean;
-  /** Stars for finishing the chapter, while its closing card is open. */
-  chapterDone: number | null;
+  travel: WorldId | null;
+  /** The chapter whose title card is open. */
+  chapter: WorldId | null;
+  /** A chapter just finished: its stars, while its closing card is open. */
+  chapterDone: { stars: number; world: WorldId } | null;
   towerFloors: number;
   toasts: Toast[];
-  offline: { money: number; seconds: number; where?: "farm" | "city" } | null;
+  offline: { money: number; seconds: number; where?: WorldId } | null;
   settingsOpen: boolean;
   settings: Settings;
   statue: boolean;
@@ -146,7 +147,7 @@ export const useUI = create<UIState>(() => ({
   world: "farm",
   bus: false,
   travel: null,
-  chapter: false,
+  chapter: null,
   chapterDone: null,
   towerFloors: 0,
   toasts: [],

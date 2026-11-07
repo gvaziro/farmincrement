@@ -26,7 +26,7 @@ function inCity() {
   g.travel();
   g.state.tutorial = TUTORIAL_DONE;
   // No outside money unless a test asks for it.
-  g.state.city!.penny = 0;
+  g.state.penny.rate = 0;
   g.drainEvents();
   g.rebuild();
   return g;
@@ -175,7 +175,7 @@ describe("the bus", () => {
     expect(g.state.money).toBe(CITY_START_MONEY);
     expect(g.sleeping).toBe(farm);
     g.state.money = 500;
-    g.travel(Date.now());
+    g.travel(undefined, Date.now());
     expect(g.state).toBe(farm);
     expect(g.state.money).toBe(1_000_000);
     expect(g.sleeping?.money).toBe(500);
@@ -196,10 +196,10 @@ describe("the bus", () => {
     const g = farmWithStatue();
     g.state.autoIncome.rate = 100;
     const t0 = 1_000_000;
-    g.travel(t0);
-    expect(g.travel(t0 + 30_000)).toBeNull();
-    g.travel(t0 + 30_000);
-    const pay = g.travel(t0 + 30_000 + 3_600_000);
+    g.travel(undefined, t0);
+    expect(g.travel(undefined, t0 + 30_000)).toBeNull();
+    g.travel(undefined, t0 + 30_000);
+    const pay = g.travel(undefined, t0 + 30_000 + 3_600_000);
     expect(pay).not.toBeNull();
     expect(pay!.seconds).toBe(3600);
     expect(pay!.money).toBe(Math.floor(100 * 3600 * 0.6));
@@ -211,11 +211,11 @@ describe("the bus", () => {
     const pennyFrom = farmPenny(g.state);
     expect(pennyFrom).toBeGreaterThan(0);
     g.travel();
-    expect(g.state.city!.penny).toBe(pennyFrom);
+    expect(g.state.penny.rate).toBe(pennyFrom);
     g.state.tutorial = TUTORIAL_DONE;
-    g.state.city!.pennyT = 0.2;
+    g.state.penny.t = 0.2;
     const before = g.state.money;
-    g.state.city!.pennyAcc = 5;
+    g.state.penny.acc = 5;
     run(g, 0.5);
     expect(g.state.money).toBeGreaterThan(before + 4);
   });
@@ -242,7 +242,7 @@ describe("the bus", () => {
     expect(g.state.world).toBe("farm");
     expect(g.state.bus).toBe(true);
     expect(g.sleeping).toBe(city);
-    expect(g.sleeping?.city?.penny).toBe(farmPenny(g.state));
+    expect(g.city?.penny.rate).toBe(farmPenny(g.state));
     g.travel();
     expect(g.state).toBe(city);
     expect(g.state.money).toBe(777);
@@ -695,5 +695,57 @@ describe("fixed places", () => {
     expect(walkTo(g, shop.till.x, shop.till.z)).toBe(true);
     expect(walkTo(g, shop.cash.x, shop.cash.z)).toBe(true);
     expect(walkTo(g, CITY_OFFICE.door.x, CITY_OFFICE.door.z)).toBe(true);
+  });
+});
+
+describe("fixes from the review", () => {
+  it("the penny is not counted twice in offline income", () => {
+    const g = inCity();
+    g.state.penny.rate = 1;
+    g.state.penny.t = 0.1;
+    run(g, 60);
+    // Paid, but not as the businesses' own income.
+    expect(g.state.autoIncome.rate).toBe(0);
+  });
+
+  it("couriers take only what the business sells", () => {
+    const g = inCity();
+    const st = g.state;
+    completeAll(g, ["goods_lavka_egg", "hire_cash_lavka", "hire_c_l_bread", "goods_lavka_milk", "hire_c_l_egg", "hire_coll_lavka", "hire_c_l_milk", "zone_c_cafe", "goods_cafe_juice", "hire_cash_cafe", "goods_cafe_cheese", "hire_c_c_juice", "hire_c_c_cheese", "build_coffee", "hire_c_c_milk", "hire_c_c_latte", "hire_coll_cafe", "build_sandwich", "hire_c_c_bread", "hire_c_c_ch2", "hire_c_c_sand", "zone_c_pizza", "goods_pizza_juice", "hire_cash_pizza", "goods_pizza_sauce", "hire_c_p_juice", "hire_c_p_sauce", "build_oven", "hire_c_p_flour", "hire_c_p_sauce2", "hire_c_p_cheese", "hire_c_p_pizza", "hire_coll_pizza", "delivery_pizza"]);
+    const box = g.shop("pizza")!.def.delivery!;
+    st.player.stack = ["bread", "bread", "pizza"];
+    st.player.x = box.x;
+    st.player.z = box.z;
+    run(g, 2);
+    expect(st.player.stack).toEqual(["bread", "bread"]);
+    expect(st.stats.delivered).toBe(1);
+  });
+
+  it("the whistle's rest and a waiting merchant survive a reload in town", () => {
+    const g = inCity();
+    g.completePad(g.pad("goods_lavka_egg")!);
+    g.completePad(g.pad("hire_cash_lavka")!);
+    run(g, 2);
+    expect(g.whistle()).toBe(true);
+    g.state.surprises.merchantIn = 0;
+    run(g, 3);
+    const m = g.state.surprises.merchant;
+    expect(m).not.toBeNull();
+    const h = loadGame(JSON.parse(JSON.stringify(serializeGame(g))));
+    expect(h.state.surprises.whistleCd).toBeGreaterThan(100);
+    expect(h.canWhistle()).toBe(false);
+    expect(h.state.surprises.merchant?.item).toBe(m!.item);
+  });
+
+  it("goods in customers' hands go back on the counter on a reload", () => {
+    const g = inCity();
+    const shop = g.state.city!.shops[0];
+    shop.shelves[0].count = 10;
+    run(g, 40);
+    const held = g.state.city!.customers.filter((c) => c.cphase !== "none" && !c.bag).reduce((n, c) => n + c.stack.length, 0);
+    expect(held).toBeGreaterThan(0);
+    const before = shop.shelves[0].count;
+    const h = loadGame(JSON.parse(JSON.stringify(serializeGame(g))));
+    expect(h.state.city!.shops[0].shelves[0].count).toBe(before + held);
   });
 });

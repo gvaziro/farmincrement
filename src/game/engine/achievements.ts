@@ -24,7 +24,12 @@ export interface AchievementDef {
   hat?: HatId;
   /** Counts in the city (progress reads the city's numbers) rather than on the farm. */
   city?: boolean;
+  /** Counts on the island. */
+  island?: boolean;
 }
+
+/** The world whose numbers an achievement reads. */
+export const achievementWorld = (a: AchievementDef) => (a.city ? "city" : a.island ? "island" : "farm");
 
 /** Goods of a kind made so far (saved, and kept across generations). */
 const made = (g: Game, item: ItemId) => g.state.made[item] ?? 0;
@@ -88,6 +93,16 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: "c_fashion", name: "Высокая мода", desc: "Открой Модный дом", icon: "🧥", goal: 1, value: (g) => (g.state.zones.has("c_fashion") ? 1 : 0), hat: "beret", city: true },
   { id: "c_earned_1b", name: "Городской миллиардер", desc: "Заработай в городе $1B", icon: "🏦", goal: 1_000_000_000, value: (g) => g.state.stats.earned, unit: "money", city: true },
   { id: "c_tower", name: "Хозяин города", desc: "Дострой Башню до самого верха", icon: "🏙️", goal: 1, value: (g) => (g.state.city?.finished ? 1 : 0), hat: "bowler", city: true },
+  // Chapter III.
+  { id: "i_first", name: "Сок на пляже", desc: "Продай первый товар на острове", icon: "🧃", goal: 1, value: (g) => g.state.stats.sold, island: true },
+  { id: "i_bridge", name: "Мост на соседний остров", desc: "Купи второй остров", icon: "🌉", goal: 2, value: (g) => g.state.zones.size, island: true },
+  { id: "i_smoothie_100", name: "Смузи-мастер", desc: "Сделай 100 смузи", icon: "🥤", goal: 100, value: (g) => g.state.made.smoothie ?? 0, island: true },
+  { id: "i_monkey", name: "Банановый патруль", desc: "Поймай обезьяну-воришку", icon: "🐒", goal: 1, value: (g) => g.state.stats.caught, island: true },
+  { id: "i_isles_5", name: "Архипелаг", desc: "Открой пять островов", icon: "🏝️", goal: 5, value: (g) => g.state.zones.size, hat: "hibiscus", island: true },
+  { id: "i_chocolate", name: "Шоколадная фабрика", desc: "Сделай первую плитку шоколада", icon: "🍫", goal: 1, value: (g) => g.state.made.chocolate ?? 0, island: true },
+  { id: "i_earned_1m", name: "Тропический миллион", desc: "Заработай на острове $1M", icon: "💰", goal: 1_000_000, value: (g) => g.state.stats.earned, unit: "money", island: true },
+  { id: "i_pearl", name: "Ловец жемчуга", desc: "Добудь первую жемчужину", icon: "🦪", goal: 1, value: (g) => g.state.made.pearl ?? 0, island: true },
+  { id: "i_lighthouse", name: "Огни Маяка", desc: "Зажги Маяк над гаванью", icon: "🗼", goal: 1, value: (g) => (g.state.world === "island" && g.state.statue ? 1 : 0), hat: "pirate", island: true },
 ];
 
 export const achievementById = (id: string) => ACHIEVEMENTS.find((a) => a.id === id);
@@ -107,9 +122,8 @@ export function updateAchievements(game: Game, dt: number) {
   st.achievementTimer -= dt;
   if (st.achievementTimer > 0) return;
   st.achievementTimer = CHECK_EVERY;
-  const inCity = st.world === "city";
   for (const a of ACHIEVEMENTS) {
-    if (!!a.city !== inCity || st.achievements.has(a.id) || a.value(game) < a.goal) continue;
+    if (achievementWorld(a) !== st.world || st.achievements.has(a.id) || a.value(game) < a.goal) continue;
     st.achievements.add(a.id);
     game.emit({ type: "achievement", id: a.id });
   }

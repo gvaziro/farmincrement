@@ -7,7 +7,7 @@
 import { mulberry32 } from "../core/math";
 import type { CropDef } from "../data/crops";
 import { DAY_LENGTH, dayNumber, timeOfDay } from "./daycycle";
-import { DAYS_PER_SEASON, SEASON_ORDER, type SeasonId } from "./seasons";
+import { DAYS_PER_SEASON, SEASON_ORDER, type Climate, type SeasonId } from "./seasons";
 
 export type WeatherKind = "clear" | "rain" | "fog" | "snow";
 
@@ -33,6 +33,14 @@ export const WEATHER_CHANCES: Record<SeasonId, readonly [WeatherKind, number][]>
   winter: [["snow", 0.45], ["fog", 0.12]],
 };
 
+/** The tropics: no snow; the rainy season (the calendar's winter) is wet. */
+export const TROPICAL_CHANCES: Record<SeasonId, readonly [WeatherKind, number][]> = {
+  spring: [["rain", 0.25], ["fog", 0.08]],
+  summer: [["rain", 0.18]],
+  autumn: [["rain", 0.35]],
+  winter: [["rain", 0.6], ["fog", 0.1]],
+};
+
 /** Plants and trees grow this much faster in the rain. */
 export const RAIN_GROWTH = 1.5;
 /** Fade in/out of a weather event, as a share of the day. */
@@ -46,13 +54,14 @@ const CLEAR: WeatherDay = { kind: "clear", start: 0, end: 0 };
 export const seasonOfDay = (day: number): SeasonId => SEASON_ORDER[Math.floor((day - 1) / DAYS_PER_SEASON) % SEASON_ORDER.length];
 
 /** The weather of day N (1-based). The very first day is always sunny. */
-export function weatherOfDay(day: number, frozen?: SeasonId): WeatherDay {
+export function weatherOfDay(day: number, frozen?: Climate): WeatherDay {
   if (day <= 1) return CLEAR;
   const rnd = mulberry32(day * 7919 + 17);
   const roll = rnd();
   let acc = 0;
   let kind: WeatherKind = "clear";
-  for (const [k, p] of WEATHER_CHANCES[frozen ?? seasonOfDay(day)]) {
+  const table = frozen === "tropical" ? TROPICAL_CHANCES[seasonOfDay(day)] : WEATHER_CHANCES[frozen ?? seasonOfDay(day)];
+  for (const [k, p] of table) {
     acc += p;
     if (roll < acc) {
       kind = k;
@@ -72,7 +81,7 @@ export function weatherOfDay(day: number, frozen?: SeasonId): WeatherDay {
 }
 
 /** Weather right now: its kind and intensity (0 … 1, ramps in and out). */
-export function weatherAt(clock: number, frozen?: SeasonId): { kind: WeatherKind; k: number } {
+export function weatherAt(clock: number, frozen?: Climate): { kind: WeatherKind; k: number } {
   const w = weatherOfDay(dayNumber(clock), frozen);
   const t = timeOfDay(clock);
   if (w.kind === "clear" || t <= w.start || t >= w.end) return { kind: "clear", k: 0 };
@@ -80,7 +89,7 @@ export function weatherAt(clock: number, frozen?: SeasonId): { kind: WeatherKind
 }
 
 /** A rainbow after a spring or summer shower: 0 … 1. */
-export function rainbowAt(clock: number, frozen?: SeasonId): number {
+export function rainbowAt(clock: number, frozen?: Climate): number {
   const day = dayNumber(clock);
   const w = weatherOfDay(day, frozen);
   if (w.kind !== "rain") return 0;
@@ -93,7 +102,7 @@ export function rainbowAt(clock: number, frozen?: SeasonId): number {
 }
 
 /** Weather that counts for gameplay: once it is properly under way. */
-export function currentWeather(clock: number, frozen?: SeasonId): WeatherKind {
+export function currentWeather(clock: number, frozen?: Climate): WeatherKind {
   const w = weatherAt(clock, frozen);
   return w.k > 0.3 ? w.kind : "clear";
 }
@@ -102,7 +111,7 @@ export function currentWeather(clock: number, frozen?: SeasonId): WeatherKind {
 export const weatherGrowth = (raining: boolean, crop: CropDef) => (raining && crop.kind !== "water" ? RAIN_GROWTH : 1);
 
 /** Seconds of play until the weather of the current day starts (or null). */
-export function weatherStartsIn(clock: number, frozen?: SeasonId): number | null {
+export function weatherStartsIn(clock: number, frozen?: Climate): number | null {
   const w = weatherOfDay(dayNumber(clock), frozen);
   const t = timeOfDay(clock);
   if (w.kind === "clear" || t >= w.start) return null;

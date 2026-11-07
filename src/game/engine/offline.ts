@@ -13,5 +13,5 @@ export function offlineEarnings(rate: number, seconds: number, holiday = 0) {
   return { seconds: s, money: Math.floor(rate * s * (OFFLINE_EFFICIENCY + holiday * HOLIDAY_EFFICIENCY_PER_LEVEL)) };
 }
 
-/** What this world earned on its own; the city also got the farm's "копеечка". */
-export const offlineFor = (st: GameState, seconds: number, holiday = 0) => offlineEarnings(st.autoIncome.rate + (st.city?.penny ?? 0), seconds, holiday);
+/** What this world earned on its own, with the "копеечка" the others sent. */
+export const offlineFor = (st: GameState, seconds: number, holiday = 0) => offlineEarnings(st.autoIncome.rate + st.penny.rate, seconds, holiday);

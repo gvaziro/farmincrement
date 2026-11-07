@@ -1,5 +1,5 @@
 /** Hats for the farmer: the straw hat to start with, the rest are achievement rewards. */
-export const HAT_IDS = ["straw", "cap", "beanie", "wreath", "cowboy", "fisher", "party", "pumpkin", "chef", "crown", "tophat", "explorer", "ushanka", "beret", "bowler"] as const;
+export const HAT_IDS = ["straw", "cap", "beanie", "wreath", "cowboy", "fisher", "party", "pumpkin", "chef", "crown", "tophat", "explorer", "ushanka", "beret", "bowler", "hibiscus", "pirate"] as const;
 
 export type HatId = (typeof HAT_IDS)[number];
 
@@ -27,6 +27,8 @@ export const HATS: Record<HatId, HatDef> = {
   ushanka: { id: "ushanka", name: "Ушанка", icon: "🧣", color: "#7a5636" },
   beret: { id: "beret", name: "Берет модельера", icon: "🎨", color: "#c0392b" },
   bowler: { id: "bowler", name: "Котелок магната", icon: "🕴️", color: "#2f3640" },
+  hibiscus: { id: "hibiscus", name: "Панама с гибискусом", icon: "🌺", color: "#f4e6b8" },
+  pirate: { id: "pirate", name: "Треуголка капитана", icon: "🏴‍☠️", color: "#2b2b2b" },
 };
 
 export const isHatId = (v: unknown): v is HatId => typeof v === "string" && (HAT_IDS as readonly string[]).includes(v);

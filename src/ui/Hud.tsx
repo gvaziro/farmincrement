@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { formatDuration, formatMoney } from "@/game/core/format";
-import { CITY_DEMAND, CITY_SEASON_PERK } from "@/game/data/city";
+import { CITY_SEASON_PERK } from "@/game/data/city";
+import { ISLAND_SEASONS } from "@/game/data/island";
+import { demandOf } from "@/game/engine/demand";
 import { ITEMS, type ItemId } from "@/game/data/items";
 import { RUSH_MULT, WHISTLE_MULT } from "@/game/data/surprises";
 import { dayNumber } from "@/game/engine/daycycle";
@@ -163,7 +165,8 @@ function DayClock({ runtime }: { runtime: Runtime }) {
   const weather = useUI((s) => s.clock.weather);
   const rainbow = useUI((s) => s.clock.rainbow);
   const [open, setOpen] = useState(false);
-  const def = SEASONS[season];
+  const world = useUI((s) => s.world);
+  const def = world === "island" ? { ...SEASONS[season], ...ISLAND_SEASONS[season] } : SEASONS[season];
   const sky = rainbow ? "🌈" : weather !== "clear" ? WEATHER_NAMES[weather].icon : null;
   return (
     <div className="clock-wrap">
@@ -202,7 +205,8 @@ function SeasonCard({ runtime, onClose }: { runtime: Runtime; onClose: () => voi
   const clock = st.dayClock;
   // "Вечная зима": the calendar stands still.
   const frozen = frozenSeason(st);
-  const def = SEASONS[st.season];
+  const isle = st.world === "island";
+  const def = isle ? { ...SEASONS[st.season], ...ISLAND_SEASONS[st.season] } : SEASONS[st.season];
   const inCity = st.world === "city";
   const next = SEASONS[nextSeason(def.id)];
   const left = Math.max(60, seasonTimeLeft(clock));
@@ -221,18 +225,18 @@ function SeasonCard({ runtime, onClose }: { runtime: Runtime; onClose: () => voi
         <span className="season-card__icon">{def.icon}</span>
         <div>
           <b>{def.name}</b>
-          <span>{frozen ? `день ${dayNumber(clock)} · испытание поколения` : `день ${seasonDay(clock)} из ${DAYS_PER_SEASON} · год ${yearNumber(clock)}`}</span>
+          <span>{frozen === "winter" ? `день ${dayNumber(clock)} · испытание поколения` : `день ${seasonDay(clock)} из ${DAYS_PER_SEASON} · год ${yearNumber(clock)}`}</span>
         </div>
       </div>
       <div className="season-card__row">
         <span>🎁</span>
-        <span>{frozen ? "Мороз: машины работают медленнее, посадки растут вдвое медленнее" : inCity ? CITY_SEASON_PERK[def.id][0].toUpperCase() + CITY_SEASON_PERK[def.id].slice(1) : def.perk[0].toUpperCase() + def.perk.slice(1)}</span>
+        <span>{frozen === "winter" ? "Мороз: машины работают медленнее, посадки растут вдвое медленнее" : inCity ? CITY_SEASON_PERK[def.id][0].toUpperCase() + CITY_SEASON_PERK[def.id].slice(1) : def.perk[0].toUpperCase() + def.perk.slice(1)}</span>
       </div>
       <div className="season-card__row">
         <span>📈</span>
         <span>Спрос ×1.5:</span>
         <span className="season-card__goods">
-          {(inCity ? CITY_DEMAND[def.id] : def.demand).map((item: ItemId) => (
+          {demandOf(st).map((item: ItemId) => (
             <ItemIcon key={item} item={item} fallback={ITEMS[item].icon} size={26} />
           ))}
         </span>
@@ -243,7 +247,7 @@ function SeasonCard({ runtime, onClose }: { runtime: Runtime; onClose: () => voi
           <span>{sky}</span>
         </div>
       )}
-      <div className="season-card__foot">{frozen ? "Вечная зима: весны в этом поколении не будет" : `До ${next.genitive} ${next.icon} — ${formatDuration(left)}`}</div>
+      <div className="season-card__foot">{frozen === "winter" ? "Вечная зима: весны в этом поколении не будет" : isle ? `Вечное лето. Дальше: ${ISLAND_SEASONS[next.id].name.toLowerCase()} ${ISLAND_SEASONS[next.id].icon}, через ${formatDuration(left)}` : `До ${next.genitive} ${next.icon} — ${formatDuration(left)}`}</div>
     </div>
   );
 }
@@ -340,7 +344,7 @@ function OfflineModal() {
     <div className="modal-backdrop">
       <div className="modal modal--offline">
         <div className="modal__emoji">🌙</div>
-        <h2>{offline.where === "city" ? "Пока тебя не было в городе…" : "Пока тебя не было…"}</h2>
+        <h2>{offline.where === "city" ? "Пока тебя не было в городе…" : offline.where === "island" ? "Пока тебя не было на острове…" : "Пока тебя не было…"}</h2>
         <p>{offline.where === "city" ? "Заведения работали" : "Работники трудились"} {formatDuration(offline.seconds)} и заработали</p>
         <div className="modal__money">${formatMoney(offline.money)}</div>
         <button className="btn btn--primary" onClick={() => useUI.setState({ offline: null })}>

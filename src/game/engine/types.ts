@@ -2,6 +2,7 @@ import type { Rect } from "../core/math";
 import type { PlayerStatId, WorkerStatId } from "../data/balance";
 import type { ChallengeId } from "../data/challenges";
 import type { ShelfDef, ShopDef, ShopId, TableDef } from "../data/city";
+import type { WorldId } from "../data/worlds";
 import type { CropDef } from "../data/crops";
 import type { HatId } from "../data/hats";
 import type { PerkId } from "../data/legacy";
@@ -257,7 +258,8 @@ export interface Merchant {
   anim: number;
 }
 
-export type RunawayKind = "chicken" | "cow" | "sheep";
+export type { RunawayKind } from "../data/worlds";
+import type { RunawayKind } from "../data/worlds";
 
 /** An animal that slipped out of its pen and wanders the farm, dodging the farmer. */
 export interface Runaway extends Actor {
@@ -386,22 +388,23 @@ export interface CityState {
   floors: number;
   /** The tower is finished: the chapter is over. */
   finished: boolean;
-  /** The farm's "копеечка": money per second, money on its way, seconds to the next payment. */
-  penny: number;
-  pennyAcc: number;
-  pennyT: number;
   bloggerIn: number;
   /** Rush hour right now (for a toast when it begins). */
   rushHour: boolean;
 }
 
 export interface GameState {
-  /** Which map this is: the farm, or the city of chapter II. */
-  world: "farm" | "city";
+  /** Which map this is: the farm, the city of chapter II or the island of chapter III. */
+  world: WorldId;
   /** The city's own entities; null on the farm. */
   city: CityState | null;
   /** The family has built the statue once: the bus to the city runs. */
   bus: boolean;
+  /**
+   * What the other worlds send here while you play this one ("копеечка"):
+   * money per second, money on its way, seconds to the next payment.
+   */
+  penny: { rate: number; acc: number; t: number };
   time: number;
   money: number;
   player: Player;
@@ -514,10 +517,12 @@ export type GameEvent =
   | { type: "delivered"; value: number; x: number; z: number }
   /** The farm's "копеечка" arrived. */
   | { type: "penny"; value: number }
+  /** A plot of the island opened: fame for the family. */
+  | { type: "isleOpen"; zone: ZoneId; stars: number }
   | { type: "rushHour" }
   | { type: "buzz"; shop: ShopId; state: "start" | "end" }
   | { type: "floor"; floor: number; x: number; z: number }
-  | { type: "chapterDone"; stars: number }
+  | { type: "chapterDone"; stars: number; world: WorldId }
   | { type: "shopOpen"; shop: ShopId; stars: number };
 
 export interface OrderLine {

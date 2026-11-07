@@ -4,7 +4,7 @@ import { machineById, type ZoneId } from "../data/layout";
 import type { CityState, Customer, GameState, ShelfState, ShopState, TableState, Van } from "./types";
 import { applyStats, baseActor, createInitialState, createMachine, createPads } from "./world";
 
-export const CUSTOMER_POOL = 60;
+export const CUSTOMER_POOL = 84;
 
 export function createCustomer(i: number): Customer {
   return {
@@ -67,9 +67,6 @@ export function createCityData(): CityState {
     customers: Array.from({ length: CUSTOMER_POOL }, (_, i) => createCustomer(i)),
     floors: 0,
     finished: false,
-    penny: 0,
-    pennyAcc: 0,
-    pennyT: 15,
     bloggerIn: BLOGGER_FIRST,
     rushHour: false,
   };

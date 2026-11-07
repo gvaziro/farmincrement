@@ -2,24 +2,14 @@
 import { hashString, mulberry32, rect, type Rect } from "../core/math";
 import { FIRST_GOLDEN, FIRST_MERCHANT, FIRST_RUNAWAY } from "../data/surprises";
 import { PLAYER_STATS, statValue, WORKER_STATS } from "../data/balance";
-import { FARM_BUS_STOP } from "../data/city";
 import { CROPS } from "../data/crops";
 import {
-  DEPOT,
-  FARMHOUSE,
-  FIELDS,
-  INITIAL_MACHINES,
-  MARKET,
   MERCHANT_CART,
-  WATER_RECTS,
+  PLAYER_SPAWN,
   standPoint,
   PADS,
-  PLAYER_SPAWN,
-  STATUE,
-  TRASH,
   ZONE_D,
   ZONE_W,
-  ZONES,
   machineById,
   type FieldDef,
   type MachineDef,
@@ -27,6 +17,9 @@ import {
   type WorkerDef,
   type ZoneId,
 } from "../data/layout";
+import { layoutFor, layoutOf, type DepotDef, type FarmLayout, type FarmWorldId } from "../data/worlds";
+// The island's data registers itself with the layouts on import.
+import "../data/island";
 import { MACHINE_TYPES } from "../data/machines";
 import { cityInteract, cityObstacles, cityZoneIdAt } from "./cityWorld";
 import { seasonOf, seasonWorkerSpeed } from "./seasons";
@@ -156,13 +149,13 @@ export function createMachine(def: MachineDef, fresh: boolean, level = 1): Machi
   };
 }
 
-export function createTruck(index: number): Truck {
+export function createTruck(depot: DepotDef, index: number): Truck {
   return {
     id: `truck_${index}`,
     phase: "away",
     t: 2 + index * 6,
     x: 60,
-    z: DEPOT.roadZ,
+    z: depot.roadZ,
     cargo: [],
     incoming: 0,
     wait: 0,
@@ -170,8 +163,8 @@ export function createTruck(index: number): Truck {
   };
 }
 
-export function createDepot(): Depot {
-  return { storage: [], incoming: 0, truckLevel: 1, trucks: [createTruck(0)] };
+export function createDepot(depot: DepotDef): Depot {
+  return { storage: [], incoming: 0, truckLevel: 1, trucks: [createTruck(depot, 0)] };
 }
 
 /** No events yet: the first ones come a few minutes after the tutorial. */
@@ -194,23 +187,28 @@ export function createPads(list: readonly PadDef[] = PADS): PadState[] {
   return list.map((def) => ({ id: def.id, def, paid: 0, level: 1, done: false, visible: false, appearT: 0 }));
 }
 
-export function createInitialState(): GameState {
+/** A brand new farm-like world: the home farm, or the island. */
+export function createInitialState(world: FarmWorldId = "farm"): GameState {
+  const L = layoutFor(world);
   const player = createPlayer();
+  player.x = L.spawn.x;
+  player.z = L.spawn.z;
   const state: GameState = {
-    world: "farm",
+    world,
     city: null,
-    bus: false,
+    bus: world !== "farm",
+    penny: { rate: 0, acc: 0, t: 15 },
     time: 0,
     money: 0,
     player,
     playerLevels: { capacity: 1, speed: 1, reach: 1 },
     workerLevels: { speed: 1, capacity: 1 },
     marketLevel: 1,
-    zones: new Set<ZoneId>(["farm"]),
-    fields: FIELDS.filter((f) => f.id === "wheat_1").map((f) => createField(f, false)),
-    machines: INITIAL_MACHINES.map((id) => createMachine(machineById(id), false)),
+    zones: new Set<ZoneId>([L.startZone]),
+    fields: L.fields.filter((f) => L.startFields.includes(f.id)).map((f) => createField(f, false)),
+    machines: L.startMachines.map((id) => createMachine(machineById(id), false)),
     workers: [],
-    pads: createPads(),
+    pads: createPads(L.pads),
     depot: null,
     statue: false,
     flights: [],
@@ -263,16 +261,23 @@ export function applyStats(state: GameState) {
 export const zoneAt = (x: number, z: number) => ({ gx: Math.round(x / ZONE_W), gz: Math.round(z / ZONE_D) });
 
 const zoneKey = (gx: number, gz: number) => `${gx},${gz}`;
-const ZONE_BY_GRID = new Map(ZONES.map((z) => [zoneKey(z.gx, z.gz), z.id]));
+const GRIDS = new Map<FarmLayout, Map<string, ZoneId>>();
 
-export function zoneIdAt(x: number, z: number): ZoneId | undefined {
+/** The plot of a farm-like world at (x, z). */
+export function zoneIdAt(x: number, z: number, layout: FarmLayout = layoutFor("farm")): ZoneId | undefined {
+  let grid = GRIDS.get(layout);
+  if (!grid) {
+    grid = new Map(layout.zones.map((zd) => [zoneKey(zd.gx, zd.gz), zd.id]));
+    GRIDS.set(layout, grid);
+  }
   const g = zoneAt(x, z);
-  return ZONE_BY_GRID.get(zoneKey(g.gx, g.gz));
+  return grid.get(zoneKey(g.gx, g.gz));
 }
 
 /** True when a circle of radius r at (x,z) is fully on unlocked land. */
 export function isLand(state: GameState, x: number, z: number, r: number) {
-  const at = state.world === "city" ? cityZoneIdAt : zoneIdAt;
+  const L = state.world === "city" ? null : layoutOf(state);
+  const at = L ? (px: number, pz: number) => zoneIdAt(px, pz, L) : cityZoneIdAt;
   for (let i = 0; i < 4; i++) {
     const px = x + (i & 1 ? r : -r);
     const pz = z + (i & 2 ? r : -r);
@@ -285,20 +290,23 @@ export function isLand(state: GameState, x: number, z: number, r: number) {
 // ── derived world data ──────────────────────────────────────────────────
 export function buildObstacles(state: GameState): Rect[] {
   if (state.world === "city") return cityObstacles(state);
+  const L = layoutOf(state);
   const obs: Rect[] = state.machines.map((m) => m.body);
-  obs.push(rect(MARKET.x, MARKET.z, MARKET.w, MARKET.d));
-  obs.push(rect(FARMHOUSE.x, FARMHOUSE.z, FARMHOUSE.w, FARMHOUSE.d));
-  if (state.depot) obs.push(rect(DEPOT.x, DEPOT.z, DEPOT.w, DEPOT.d));
-  if (state.statue) obs.push(rect(STATUE.x, STATUE.z, STATUE.w, STATUE.d));
+  obs.push(rect(L.market.x, L.market.z, L.market.w, L.market.d));
+  obs.push(rect(L.farmhouse.x, L.farmhouse.z, L.farmhouse.w, L.farmhouse.d));
+  if (state.depot) obs.push(rect(L.depot.x, L.depot.z, L.depot.w, L.depot.d));
+  if (state.statue) obs.push(rect(L.statue.x, L.statue.z, L.statue.w, L.statue.d));
   const merchant = state.surprises.merchant;
   if (merchant) obs.push(rect(merchant.x, merchant.z, MERCHANT_CART.w, MERCHANT_CART.d));
-  // The pond is always there; it only matters once its plot is open.
-  obs.push(...WATER_RECTS);
+  // Water is always there; it only matters once its plot is open.
+  obs.push(...L.water);
   return obs;
 }
 
 export function buildInteractZones(state: GameState): InteractZone[] {
   if (state.world === "city") return cityInteract(state);
+  const L = layoutOf(state);
+  const { market: MARKET, farmhouse: FARMHOUSE, trash: TRASH, depot: DEPOT } = L;
   const zones: InteractZone[] = [];
   for (const m of state.machines) {
     zones.push({ id: `in:${m.id}`, kind: "machineIn", ref: m.id, rect: m.inRect });
@@ -307,7 +315,7 @@ export function buildInteractZones(state: GameState): InteractZone[] {
   zones.push({ id: "market", kind: "market", ref: "market", rect: rect(MARKET.sell.x, MARKET.sell.z, MARKET.sell.w, MARKET.sell.d) });
   zones.push({ id: "farmhouse", kind: "farmhouse", ref: "farmhouse", rect: rect(FARMHOUSE.door.x, FARMHOUSE.door.z, FARMHOUSE.door.w, FARMHOUSE.door.d) });
   zones.push({ id: "trash", kind: "trash", ref: "trash", rect: rect(TRASH.x, TRASH.z, TRASH.w, TRASH.d) });
-  if (state.bus) zones.push({ id: "bus", kind: "bus", ref: "bus", rect: rect(FARM_BUS_STOP.x, FARM_BUS_STOP.z, FARM_BUS_STOP.w, FARM_BUS_STOP.d) });
+  if (state.bus) zones.push({ id: "bus", kind: "bus", ref: "bus", rect: rect(L.busStop.x, L.busStop.z, L.busStop.w, L.busStop.d) });
   if (state.depot) {
     zones.push({ id: "depot", kind: "depot", ref: "depot", rect: rect(DEPOT.input.x, DEPOT.input.z, DEPOT.input.w, DEPOT.input.d) });
   }

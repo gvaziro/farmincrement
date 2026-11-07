@@ -300,6 +300,35 @@ export function CowModel({ headRef }: { headRef?: HeadRef }) {
   );
 }
 
+/** A cheeky monkey with a banana in its paw. */
+export function MonkeyModel({ headRef }: { headRef?: HeadRef }) {
+  return (
+    <>
+      <StaticBatch>
+        <Part g={G.sphere(0.22, 8, 6)} c="#8a5a33" position={[0, 0.42, 0]} scale={[1, 1.15, 0.9]} />
+        <Part g={G.sphere(0.14, 7, 5)} c="#d9a46a" position={[0, 0.4, 0.12]} scale={[1, 1.2, 0.6]} />
+        {[-0.12, 0.12].map((x) => (
+          <Part key={x} g={G.box(0.08, 0.26, 0.08)} c="#7a4b26" position={[x, 0.13, 0]} />
+        ))}
+        <Part g={G.box(0.07, 0.3, 0.07)} c="#7a4b26" position={[-0.25, 0.48, 0.05]} rotation={[0, 0, 0.6]} />
+        <Part g={G.box(0.07, 0.3, 0.07)} c="#7a4b26" position={[0.25, 0.5, 0.05]} rotation={[0, 0, -0.9]} />
+        <Part g={G.cyl(0.035, 0.045, 0.24, 5)} c="#ffe14d" position={[0.36, 0.62, 0.08]} rotation={[0, 0, -0.3]} />
+        <Part g={G.cyl(0.025, 0.03, 0.5, 5)} c="#7a4b26" position={[0, 0.4, -0.3]} rotation={[0.9, 0, 0]} />
+      </StaticBatch>
+      <group ref={headRef} position={[0, 0.78, 0.04]}>
+        <StaticBatch>
+          <Part g={G.sphere(0.17, 8, 6)} c="#8a5a33" />
+          <Part g={G.sphere(0.11, 7, 5)} c="#d9a46a" position={[0, -0.03, 0.1]} scale={[1.1, 0.9, 0.7]} />
+          <Part g={G.sphere(0.06, 6, 4)} c="#d9a46a" position={[-0.17, 0.02, 0]} />
+          <Part g={G.sphere(0.06, 6, 4)} c="#d9a46a" position={[0.17, 0.02, 0]} />
+          <Part g={G.sphere(0.025, 4, 3)} c="#2b2b2b" position={[-0.05, 0.03, 0.15]} />
+          <Part g={G.sphere(0.025, 4, 3)} c="#2b2b2b" position={[0.05, 0.03, 0.15]} />
+        </StaticBatch>
+      </group>
+    </>
+  );
+}
+
 /** One fluffy sheep: a cloud of wool on dark legs, with a dark face. */
 export function SheepModel({ headRef }: { headRef?: HeadRef }) {
   return (

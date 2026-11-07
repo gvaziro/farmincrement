@@ -1,22 +1,9 @@
-import type { ItemId } from "../data/items";
-import { FIELDS, MARKET } from "../data/layout";
 import { CITY_FIRST_PAD } from "../data/city";
+import { FARM_TUTORIAL, layoutOf, type TutorialStep } from "../data/worlds";
 import type { Game } from "./Game";
 
-export interface TutorialStep {
-  /** Item whose rendered icon the HUD shows instead of the emoji. */
-  item?: ItemId;
-  text: string;
-  icon: string;
-}
-
-export const TUTORIAL: readonly TutorialStep[] = [
-  { text: "Пробеги по полю — собери пшеницу", icon: "🌾", item: "wheat" },
-  { text: "Отнеси пшеницу на мельницу", icon: "🌀", item: "wheat" },
-  { text: "Забери готовую муку", icon: "🍚", item: "flour" },
-  { text: "Продай муку на рынке", icon: "💰", item: "flour" },
-  { text: "Встань на площадку — купи грядку", icon: "🏗️" },
-];
+export type { TutorialStep };
+export const TUTORIAL: readonly TutorialStep[] = FARM_TUTORIAL;
 
 /** The city's first steps: the same five, so both worlds share the numbers below. */
 export const CITY_TUTORIAL: readonly TutorialStep[] = [
@@ -28,7 +15,7 @@ export const CITY_TUTORIAL: readonly TutorialStep[] = [
 ];
 
 /** The steps of the world you are in. */
-export const tutorialSteps = (game: Game) => (game.state.world === "city" ? CITY_TUTORIAL : TUTORIAL);
+export const tutorialSteps = (game: Game) => (game.state.world === "city" ? CITY_TUTORIAL : layoutOf(game.state).tutorial.steps);
 
 /** Step from which purchase pads become visible. */
 export const TUTORIAL_PADS_STEP = 4;
@@ -37,20 +24,21 @@ export const TUTORIAL_DONE = TUTORIAL.length;
 export function tutorialTarget(game: Game): { x: number; z: number } | null {
   const st = game.state;
   if (st.world === "city") return cityTarget(game);
-  const mill = game.machine("mill");
+  const L = layoutOf(st);
+  const mill = game.machine(L.startMachines[0]);
   switch (st.tutorial) {
     case 0: {
-      const f = FIELDS[0];
-      return { x: f.x, z: f.z };
+      const f = st.fields.find((x) => x.id === L.startFields[0]);
+      return f ? { x: f.def.x, z: f.def.z } : null;
     }
     case 1:
       return mill ? { x: mill.inRect.x, z: mill.inRect.z } : null;
     case 2:
       return mill ? { x: mill.outRect.x, z: mill.outRect.z } : null;
     case 3:
-      return { x: MARKET.sell.x, z: MARKET.sell.z };
+      return { x: L.market.sell.x, z: L.market.sell.z };
     case 4: {
-      const pad = game.pad("field_wheat_2");
+      const pad = game.pad(L.tutorial.firstPad);
       return pad ? { x: pad.def.x, z: pad.def.z } : null;
     }
     default:
@@ -63,13 +51,15 @@ export function tutorialText(game: Game): string | null {
   const st = game.state;
   if (st.tutorial >= TUTORIAL_DONE) return null;
   if (st.world === "city") return cityText(game);
+  const L = layoutOf(st);
   const p = st.player;
   if (st.tutorial === 2) {
-    const mill = game.machine("mill");
-    if (p.stack.length >= p.capacity && !p.stack.includes("flour")) return "Освободи руки: отнеси пшеницу на мельницу";
-    if (mill && mill.output === 0) return "Мельница мелет муку — подожди у выхода";
+    const mill = game.machine(L.startMachines[0]);
+    const island = st.world === "island";
+    if (p.stack.length >= p.capacity && !p.stack.includes(L.tutorial.product)) return island ? "Освободи руки: отнеси ананасы в соковыжималку" : "Освободи руки: отнеси пшеницу на мельницу";
+    if (mill && mill.output === 0) return island ? "Соковыжималка жмёт сок — подожди у выхода" : "Мельница мелет муку — подожди у выхода";
   }
-  return TUTORIAL[st.tutorial].text;
+  return L.tutorial.steps[st.tutorial].text;
 }
 
 // ── the city ────────────────────────────────────────────────────────────
@@ -125,18 +115,19 @@ export function updateTutorial(game: Game) {
   if (st.tutorial >= TUTORIAL_DONE) return;
   const p = st.player;
   let done = false;
-  if (st.world === "city") done = cityStepDone(game);
+  const L = st.world === "city" ? null : layoutOf(st);
+  if (!L) done = cityStepDone(game);
   else switch (st.tutorial) {
     case 0:
-      done = p.stack.filter((i) => i === "wheat").length >= Math.min(6, p.capacity);
+      done = p.stack.filter((i) => i === L.tutorial.raw).length >= Math.min(6, p.capacity);
       break;
     case 1: {
-      const mill = game.machine("mill");
-      done = !!mill && ((mill.inputs.wheat ?? 0) > 0 || mill.working || mill.output > 0);
+      const mill = game.machine(L.startMachines[0]);
+      done = !!mill && ((mill.inputs[L.tutorial.raw] ?? 0) > 0 || mill.working || mill.output > 0);
       break;
     }
     case 2:
-      done = p.stack.includes("flour");
+      done = p.stack.includes(L.tutorial.product);
       break;
     case 3:
       done = st.stats.sold > 0;

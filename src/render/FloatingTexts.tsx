@@ -8,7 +8,7 @@ import { PLAYER_STATS, WORKER_STATS, type PlayerStatId, type WorkerStatId } from
 import { CITY_OFFICE } from "@/game/data/city";
 import { formatMoney } from "@/game/core/format";
 import { ITEMS } from "@/game/data/items";
-import { FARMHOUSE } from "@/game/data/layout";
+import { layoutOf } from "@/game/data/worlds";
 import { TUTORIAL_DONE } from "@/game/engine/tutorial";
 import { STACK_BASE_Y, stackColumnCount } from "@/game/engine/anchors";
 import type { Runtime } from "@/runtime/runtime";
@@ -174,6 +174,8 @@ export function FloatingTexts({ runtime }: { runtime: Runtime }) {
     if (st.tutorial >= TUTORIAL_DONE && st.player.zoneId !== "farmhouse") {
       const can =
         (Object.keys(PLAYER_STATS) as PlayerStatId[]).some((id) => {
+          // Nothing to harvest in town: the office does not sell reach.
+          if (st.world === "city" && id === "reach") return false;
           const c = g.playerStatCost(id);
           return c !== null && st.money >= c;
         }) ||
@@ -193,7 +195,8 @@ export function FloatingTexts({ runtime }: { runtime: Runtime }) {
           bubbles.current.set("farmhouse", el);
         }
         const bob = Math.sin(state.clock.elapsedTime * 4) * 5;
-        const s = st.city ? toScreen(CITY_OFFICE.x, 3.6, CITY_OFFICE.z) : toScreen(FARMHOUSE.x, 4.6, FARMHOUSE.z);
+        const house = st.city ? null : layoutOf(st).farmhouse;
+        const s = house ? toScreen(house.x, 4.6, house.z) : toScreen(CITY_OFFICE.x, 3.6, CITY_OFFICE.z);
         el.style.transform = `translate3d(${s.x}px, ${s.y + bob}px, 0) translate(-50%, -100%)`;
         el.style.display = s.behind ? "none" : "";
       }

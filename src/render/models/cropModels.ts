@@ -162,6 +162,126 @@ function pumpkin() {
   return merge(parts);
 }
 
+// ── the island ──────────────────────────────────────────────────────────
+function pineapplePlant() {
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    parts.push(part(P.cone(0.06, 0.55, 4), i % 2 ? "#4f9e3a" : "#3f8f2f", { p: [Math.cos(a) * 0.14, 0.24, Math.sin(a) * 0.14], r: [Math.sin(a) * 0.7, 0, -Math.cos(a) * 0.7] }));
+  }
+  parts.push(part(P.sphere(0.15, 8, 6), "#f2c230", { p: [0, 0.45, 0], s: [1, 1.3, 1] }));
+  parts.push(part(P.sphere(0.152, 8, 6), "#c99a20", { p: [0, 0.45, 0], s: [0.55, 1.31, 1.02] }));
+  parts.push(part(P.cone(0.07, 0.22, 5), "#5fbe45", { p: [0, 0.73, 0] }));
+  return merge(parts);
+}
+
+function canePlant() {
+  const rnd = mulberry32(31);
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + rnd();
+    const x = Math.cos(a) * 0.14;
+    const z = Math.sin(a) * 0.14;
+    const h = 1.0 + rnd() * 0.35;
+    parts.push(part(P.cyl(0.035, 0.04, h, 5), i % 2 ? "#9fd06a" : "#8cc25a", { p: [x, h / 2, z] }));
+    for (const y of [0.3, 0.6, 0.9]) if (y < h) parts.push(part(P.cyl(0.042, 0.042, 0.03, 5), "#6f9e3a", { p: [x, y, z] }));
+    parts.push(part(P.cone(0.05, 0.5, 3), "#6cc24a", { p: [x * 1.6, h + 0.05, z * 1.6], r: [z * 2, 0, -x * 2] }));
+  }
+  return merge(parts);
+}
+
+function coffeeBush() {
+  return merge([
+    part(P.cyl(0.04, 0.06, 0.4, 5), "#6b4f2a", { p: [0, 0.2, 0] }),
+    part(P.ico(0.36, 0), "#2f7f2a", { p: [0, 0.6, 0], s: [1, 0.85, 1] }),
+    part(P.ico(0.24, 0), "#3f8f2f", { p: [0.2, 0.75, 0.1] }),
+    part(P.ico(0.22, 0), "#2a6f25", { p: [-0.18, 0.72, -0.12] }),
+  ]);
+}
+
+function coffeeBerries() {
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    parts.push(part(P.sphere(0.045, 5, 4), i % 2 ? "#d7263d" : "#b0182c", { p: [Math.cos(a) * 0.3, 0.55 + (i % 3) * 0.1, Math.sin(a) * 0.3] }));
+  }
+  return merge(parts);
+}
+
+function vanillaVine() {
+  return merge([
+    part(P.cyl(0.03, 0.03, 0.9, 4), "#8a5a33", { p: [0, 0.45, 0] }),
+    part(P.cone(0.12, 0.25, 4), "#4fae3a", { p: [0.1, 0.35, 0], r: [0, 0, -1.2] }),
+    part(P.cone(0.12, 0.25, 4), "#5fbe45", { p: [-0.1, 0.55, 0.05], r: [0, 0, 1.2] }),
+    part(P.cone(0.12, 0.25, 4), "#4fae3a", { p: [0.08, 0.75, -0.05], r: [0, 0, -1.2] }),
+  ]);
+}
+
+function vanillaFlowers() {
+  return merge([
+    part(P.sphere(0.07, 6, 4), "#fff4c8", { p: [0.16, 0.5, 0.05] }),
+    part(P.sphere(0.07, 6, 4), "#f4e6b0", { p: [-0.15, 0.7, 0.04] }),
+    part(P.sphere(0.06, 6, 4), "#fff4c8", { p: [0.12, 0.88, -0.04] }),
+    part(P.cyl(0.015, 0.015, 0.22, 4), "#3a2a1a", { p: [-0.05, 0.4, 0.12], r: [0.3, 0, 0] }),
+  ]);
+}
+
+function bananaTrunk() {
+  return merge([part(P.cyl(0.13, 0.17, 2.0, 7), "#9a8a4a", { p: [0, 1.0, 0] }), part(P.cyl(0.14, 0.14, 0.1, 7), "#7a6a3a", { p: [0, 0.6, 0] })]);
+}
+
+function bananaLeaves() {
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    parts.push(part(P.box(0.32, 0.03, 1.3), i % 2 ? "#5fbe45" : "#4fae3a", { p: [Math.cos(a) * 0.55, 2.25, Math.sin(a) * 0.55], r: [0, -a + Math.PI / 2, 0.45] }));
+  }
+  parts.push(part(P.cone(0.12, 0.4, 5), "#4fae3a", { p: [0, 2.4, 0] }));
+  return merge(parts);
+}
+
+function bananaBunch() {
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    parts.push(part(P.cyl(0.035, 0.045, 0.22, 5), "#ffe14d", { p: [Math.cos(a) * 0.06, -0.05, Math.sin(a) * 0.06], r: [Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5] }));
+  }
+  parts.push(part(P.cyl(0.02, 0.02, 0.16, 4), "#6b4f2a", { p: [0, 0.1, 0] }));
+  return merge(parts);
+}
+
+function palmTrunk() {
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < 6; i++) parts.push(part(P.cyl(0.14 - i * 0.006, 0.16 - i * 0.006, 0.5, 7), i % 2 ? "#a8844a" : "#93733f", { p: [i * 0.05, 0.25 + i * 0.48, 0], r: [0, 0, -0.08] }));
+  return merge(parts);
+}
+
+function palmLeaves() {
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    parts.push(part(P.box(0.3, 0.03, 1.6), i % 2 ? "#4fae3a" : "#3f9b2f", { p: [0.3 + Math.cos(a) * 0.75, 2.75, Math.sin(a) * 0.75], r: [0, -a + Math.PI / 2, 0.38] }));
+  }
+  parts.push(part(P.sphere(0.2, 6, 4), "#5a8a2a", { p: [0.3, 2.85, 0] }));
+  return merge(parts);
+}
+
+function coconutFruit() {
+  return merge([part(P.sphere(0.13, 7, 5), "#7a4b26")]);
+}
+
+function cocoaCanopy() {
+  return merge([
+    part(P.ico(0.85, 0), "#3f8f2f", { p: [0, 2.1, 0] }),
+    part(P.ico(0.55, 0), "#2f7f2a", { p: [0.5, 1.8, 0.3] }),
+    part(P.ico(0.5, 0), "#4f9e3a", { p: [-0.45, 1.85, -0.25] }),
+  ]);
+}
+
+function cocoaPod() {
+  return merge([part(P.sphere(0.1, 7, 5), "#e09030", { s: [0.85, 1.5, 0.85] }), part(P.cyl(0.015, 0.015, 0.08, 4), "#6b4f2a", { p: [0, 0.16, 0] })]);
+}
+
 /** Water ripple ring around a fishing spot. */
 function ripple() {
   return merge([part(new TorusGeometry(0.42, 0.035, 4, 18), "#e9f8ff", { r: [Math.PI / 2, 0, 0] })]);
@@ -183,6 +303,20 @@ const builders = {
   treeTrunk,
   appleCanopy: () => treeCanopy("#4fae3a", "#3f9b2f"),
   apple,
+  pineapplePlant,
+  canePlant,
+  coffeeBush,
+  coffeeBerries,
+  vanillaVine,
+  vanillaFlowers,
+  bananaTrunk,
+  bananaLeaves,
+  bananaBunch,
+  palmTrunk,
+  palmLeaves,
+  coconutFruit,
+  cocoaCanopy,
+  cocoaPod,
 };
 
 export type CropModel = keyof typeof builders;
